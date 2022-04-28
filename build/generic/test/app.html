@@ -1,0 +1,71 @@
+﻿<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>call PDF.js viewer</title>
+    <style>
+      body {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        margin: 0;
+        overflow: hidden;
+        display: flex;
+        justify-content: center;
+      }
+      .app-pdf {
+        width: 60%;
+        height: 80%;
+        top: 0;
+        margin: 0 auto;
+        position: absolute;
+        background: lightblue;
+      }
+    </style>
+  </head>
+  <body tabindex="1">
+    <div class="app-pdf">
+      <iframe name="reportPdf" frameborder="0" width="100%" height="100%" src="../web/viewer.html"></iframe>
+      <iframe name="23" width="100%" height="20px"></iframe>
+    </div> <!-- outerContainer -->
+  </body>
+  <!-- <script type="text/javascript"> -->
+  <script type="module">
+    function openPdfUrl(url, cssFileName='viewer.css') {
+      for (let i = 0; i < window.frames.length; i++) {
+        if (window.frames[i].name == 'reportPdf') {
+          initialPdf(window.frames[i].document, cssFileName, () => {
+            const pdfViewer = window.frames[i].PDFViewerApplication;
+            if (pdfViewer) {
+              pdfViewer.open(url);
+            }  
+          });
+        }
+      }
+    }
+    function initialPdf(curDocument, cssFileName, callback) {
+      fetch(`../web/${cssFileName}`).then(res=>res.text()).then(textCss =>{
+        const elStyle = document.createElement('style');
+        elStyle.type = 'text/css';
+        elStyle.innerHTML = `${textCss}`;
+        curDocument.head.appendChild(elStyle);        
+        fetch(`../web/viewer.js`).then(res=>res.text()).then(textJs => {
+          const elScript = document.createElement('script');
+          elScript.type = 'text/javascript';
+          elScript.innerHTML = `${textJs}`;
+          curDocument.body.appendChild(elScript);
+          setTimeout(() => {
+            if (callback) callback();  
+          }, 200)
+        })
+      })
+    }
+    window.onload = (event) => {
+      openPdfUrl('/test/helloworld.pdf'
+        ,'viewer.ui2.css'
+      );
+    };
+    
+  </script>
+</html>
