@@ -39,6 +39,7 @@
             const pdfViewer = window.frames[i].PDFViewerApplication;
             if (pdfViewer) {
               pdfViewer.open(url);
+              pdfViewer.appConfig.secondaryToolbar.cursorHandToolButton.click();
             }  
           });
         }
