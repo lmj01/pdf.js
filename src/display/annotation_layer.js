@@ -22,8 +22,8 @@ import {
   AnnotationBorderStyleType,
   AnnotationType,
   assert,
+  LINE_FACTOR,
   shadow,
-  stringToPDFString,
   unreachable,
   Util,
   warn,
@@ -38,6 +38,7 @@ import { ColorConverters } from "../shared/scripting_utils.js";
 import { XfaLayer } from "./xfa_layer.js";
 
 const DEFAULT_TAB_INDEX = 1000;
+const DEFAULT_FONT_SIZE = 9;
 const GetElementsByNameSet = new WeakSet();
 
 function getRectDims(rect) {
@@ -272,12 +273,12 @@ class AnnotationElement {
           break;
       }
 
-      const borderColor = data.borderColor || data.color || null;
+      const borderColor = data.borderColor || null;
       if (borderColor) {
         container.style.borderColor = Util.makeHexColor(
-          data.color[0] | 0,
-          data.color[1] | 0,
-          data.color[2] | 0
+          borderColor[0] | 0,
+          borderColor[1] | 0,
+          borderColor[2] | 0
         );
       } else {
         // Transparent (invisible) border, so do not draw it at all.
@@ -295,6 +296,110 @@ class AnnotationElement {
       container.style.height = `${height}px`;
     }
     return container;
+  }
+
+  get _commonActions() {
+    const setColor = (jsName, styleName, event) => {
+      const color = event.detail[jsName];
+      event.target.style[styleName] = ColorConverters[`${color[0]}_HTML`](
+        color.slice(1)
+      );
+    };
+
+    return shadow(this, "_commonActions", {
+      display: event => {
+        const hidden = event.detail.display % 2 === 1;
+        event.target.style.visibility = hidden ? "hidden" : "visible";
+        this.annotationStorage.setValue(this.data.id, {
+          hidden,
+          print: event.detail.display === 0 || event.detail.display === 3,
+        });
+      },
+      print: event => {
+        this.annotationStorage.setValue(this.data.id, {
+          print: event.detail.print,
+        });
+      },
+      hidden: event => {
+        event.target.style.visibility = event.detail.hidden
+          ? "hidden"
+          : "visible";
+        this.annotationStorage.setValue(this.data.id, {
+          hidden: event.detail.hidden,
+        });
+      },
+      focus: event => {
+        setTimeout(() => event.target.focus({ preventScroll: false }), 0);
+      },
+      userName: event => {
+        // tooltip
+        event.target.title = event.detail.userName;
+      },
+      readonly: event => {
+        if (event.detail.readonly) {
+          event.target.setAttribute("readonly", "");
+        } else {
+          event.target.removeAttribute("readonly");
+        }
+      },
+      required: event => {
+        if (event.detail.required) {
+          event.target.setAttribute("required", "");
+        } else {
+          event.target.removeAttribute("required");
+        }
+      },
+      bgColor: event => {
+        setColor("bgColor", "backgroundColor", event);
+      },
+      fillColor: event => {
+        setColor("fillColor", "backgroundColor", event);
+      },
+      fgColor: event => {
+        setColor("fgColor", "color", event);
+      },
+      textColor: event => {
+        setColor("textColor", "color", event);
+      },
+      borderColor: event => {
+        setColor("borderColor", "borderColor", event);
+      },
+      strokeColor: event => {
+        setColor("strokeColor", "borderColor", event);
+      },
+    });
+  }
+
+  _dispatchEventFromSandbox(actions, jsEvent) {
+    const commonActions = this._commonActions;
+    for (const name of Object.keys(jsEvent.detail)) {
+      const action = actions[name] || commonActions[name];
+      if (action) {
+        action(jsEvent);
+      }
+    }
+  }
+
+  _setDefaultPropertiesFromJS(element) {
+    if (!this.enableScripting) {
+      return;
+    }
+
+    // Some properties may have been updated thanks to JS.
+    const storedData = this.annotationStorage.getRawValue(this.data.id);
+    if (!storedData) {
+      return;
+    }
+
+    const commonActions = this._commonActions;
+    for (const [actionName, detail] of Object.entries(storedData)) {
+      const action = commonActions[actionName];
+      if (action) {
+        action({ detail, target: element });
+        // The action has been consumed: no need to keep it.
+        delete storedData[actionName];
+      }
+    }
   }
 
   /**
@@ -458,36 +563,29 @@ class AnnotationElement {
 
 class LinkAnnotationElement extends AnnotationElement {
   constructor(parameters, options = null) {
-    const isRenderable = !!(
-      parameters.data.url ||
-      parameters.data.dest ||
-      parameters.data.action ||
-      parameters.data.isTooltipOnly ||
-      parameters.data.resetForm ||
-      (parameters.data.actions &&
-        (parameters.data.actions.Action ||
-          parameters.data.actions["Mouse Up"] ||
-          parameters.data.actions["Mouse Down"]))
-    );
     super(parameters, {
-      isRenderable,
+      isRenderable: true,
       ignoreBorder: !!options?.ignoreBorder,
       createQuadrilaterals: true,
     });
+    this.isTooltipOnly = parameters.data.isTooltipOnly;
   }
 
   render() {
     const { data, linkService } = this;
     const link = document.createElement("a");
+    let isBound = false;
 
     if (data.url) {
       linkService.addLinkAttributes(link, data.url, data.newWindow);
+      isBound = true;
     } else if (data.action) {
       this._bindNamedAction(link, data.action);
+      isBound = true;
     } else if (data.dest) {
       this._bindLink(link, data.dest);
+      isBound = true;
     } else {
-      let hasClickAction = false;
       if (
         data.actions &&
         (data.actions.Action ||
@@ -496,14 +594,16 @@ class LinkAnnotationElement extends AnnotationElement {
         this.enableScripting &&
         this.hasJSActions
       ) {
-        hasClickAction = true;
         this._bindJSAction(link, data);
+        isBound = true;
       }
 
       if (data.resetForm) {
         this._bindResetFormAction(link, data.resetForm);
-      } else if (!hasClickAction) {
+        isBound = true;
+      } else if (this.isTooltipOnly && !isBound) {
         this._bindLink(link, "");
+        isBound = true;
       }
     }
 
@@ -518,7 +618,10 @@ class LinkAnnotationElement extends AnnotationElement {
     }
 
     this.container.className = "linkAnnotation";
-    this.container.appendChild(link);
+    if (isBound) {
+      this.container.appendChild(link);
+    }
+
     return this.container;
   }
 
@@ -657,7 +760,7 @@ class LinkAnnotationElement extends AnnotationElement {
         switch (field.type) {
           case "text": {
             const value = field.defaultValue || "";
-            storage.setValue(id, { value, valueAsString: value });
+            storage.setValue(id, { value });
             break;
           }
           case "checkbox":
@@ -795,82 +898,50 @@ class WidgetAnnotationElement extends AnnotationElement {
         : Util.makeHexColor(color[0], color[1], color[2]);
   }
 
-  _dispatchEventFromSandbox(actions, jsEvent) {
-    const setColor = (jsName, styleName, event) => {
-      const color = event.detail[jsName];
-      event.target.style[styleName] = ColorConverters[`${color[0]}_HTML`](
-        color.slice(1)
-      );
-    };
+  /**
+   * Apply text styles to the text in the element.
+   *
+   * @private
+   * @param {HTMLDivElement} element
+   * @memberof TextWidgetAnnotationElement
+   */
+  _setTextStyle(element) {
+    const TEXT_ALIGNMENT = ["left", "center", "right"];
+    const { fontColor } = this.data.defaultAppearanceData;
+    const fontSize =
+      this.data.defaultAppearanceData.fontSize || DEFAULT_FONT_SIZE;
 
-    const commonActions = {
-      display: event => {
-        const hidden = event.detail.display % 2 === 1;
-        event.target.style.visibility = hidden ? "hidden" : "visible";
-        this.annotationStorage.setValue(this.data.id, {
-          hidden,
-          print: event.detail.display === 0 || event.detail.display === 3,
-        });
-      },
-      print: event => {
-        this.annotationStorage.setValue(this.data.id, {
-          print: event.detail.print,
-        });
-      },
-      hidden: event => {
-        event.target.style.visibility = event.detail.hidden
-          ? "hidden"
-          : "visible";
-        this.annotationStorage.setValue(this.data.id, {
-          hidden: event.detail.hidden,
-        });
-      },
-      focus: event => {
-        setTimeout(() => event.target.focus({ preventScroll: false }), 0);
-      },
-      userName: event => {
-        // tooltip
-        event.target.title = event.detail.userName;
-      },
-      readonly: event => {
-        if (event.detail.readonly) {
-          event.target.setAttribute("readonly", "");
-        } else {
-          event.target.removeAttribute("readonly");
-        }
-      },
-      required: event => {
-        if (event.detail.required) {
-          event.target.setAttribute("required", "");
-        } else {
-          event.target.removeAttribute("required");
-        }
-      },
-      bgColor: event => {
-        setColor("bgColor", "backgroundColor", event);
-      },
-      fillColor: event => {
-        setColor("fillColor", "backgroundColor", event);
-      },
-      fgColor: event => {
-        setColor("fgColor", "color", event);
-      },
-      textColor: event => {
-        setColor("textColor", "color", event);
-      },
-      borderColor: event => {
-        setColor("borderColor", "borderColor", event);
-      },
-      strokeColor: event => {
-        setColor("strokeColor", "borderColor", event);
-      },
-    };
+    const style = element.style;
 
-    for (const name of Object.keys(jsEvent.detail)) {
-      const action = actions[name] || commonActions[name];
-      if (action) {
-        action(jsEvent);
-      }
+    // TODO: If the font-size is zero, calculate it based on the height and
+    //       width of the element.
+    // Not setting `style.fontSize` will use the default font-size for now.
+
+    // We don't use the font, as specified in the PDF document, for the <input>
+    // element. Hence using the original `fontSize` could look bad, which is why
+    // it's instead based on the field height.
+    // If the height is "big" then it could lead to a too big font size
+    // so in this case use the one we've in the pdf (hence the min).
+    if (this.data.multiLine) {
+      const height = Math.abs(this.data.rect[3] - this.data.rect[1]);
+      const numberOfLines = Math.round(height / (LINE_FACTOR * fontSize)) || 1;
+      const lineHeight = height / numberOfLines;
+      style.fontSize = `${Math.min(
+        fontSize,
+        Math.round(lineHeight / LINE_FACTOR)
+      )}px`;
+    } else {
+      const height = Math.abs(this.data.rect[3] - this.data.rect[1]);
+      style.fontSize = `${Math.min(
+        fontSize,
+        Math.round(height / LINE_FACTOR)
+      )}px`;
+    }
+
+    style.color = Util.makeHexColor(fontColor[0], fontColor[1], fontColor[2]);
+
+    if (this.data.textAlignment !== null) {
+      style.textAlign = TEXT_ALIGNMENT[this.data.textAlignment];
     }
   }
 }
@@ -909,21 +980,27 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
       //       from parsing the elements correctly for the reference tests.
       const storedData = storage.getValue(id, {
         value: this.data.fieldValue,
-        valueAsString: this.data.fieldValue,
       });
-      const textContent = storedData.valueAsString || storedData.value || "";
+      const textContent = storedData.formattedValue || storedData.value || "";
       const elementData = {
         userValue: null,
         formattedValue: null,
+        valueOnFocus: "",
       };
 
       if (this.data.multiLine) {
         element = document.createElement("textarea");
         element.textContent = textContent;
+        if (this.data.doNotScroll) {
+          element.style.overflowY = "hidden";
+        }
       } else {
         element = document.createElement("input");
         element.type = "text";
         element.setAttribute("value", textContent);
+        if (this.data.doNotScroll) {
+          element.style.overflowX = "hidden";
+        }
       }
       GetElementsByNameSet.add(element);
       element.disabled = this.data.readOnly;
@@ -944,14 +1021,15 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
       });
 
       element.addEventListener("resetform", event => {
-        const defaultValue = this.data.defaultFieldValue || "";
+        const defaultValue = this.data.defaultFieldValue ?? "";
         element.value = elementData.userValue = defaultValue;
-        delete elementData.formattedValue;
+        elementData.formattedValue = null;
       });
 
       let blurListener = event => {
-        if (elementData.formattedValue) {
-          event.target.value = elementData.formattedValue;
+        const { formattedValue } = elementData;
+        if (formattedValue !== null && formattedValue !== undefined) {
+          event.target.value = formattedValue;
         }
         // Reset the cursor position to the start of the field (issue 12359).
         event.target.scrollLeft = 0;
@@ -962,32 +1040,33 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
           if (elementData.userValue) {
             event.target.value = elementData.userValue;
           }
+          elementData.valueOnFocus = event.target.value;
         });
 
         element.addEventListener("updatefromsandbox", jsEvent => {
           const actions = {
             value(event) {
-              elementData.userValue = event.detail.value || "";
+              elementData.userValue = event.detail.value ?? "";
               storage.setValue(id, { value: elementData.userValue.toString() });
-              if (!elementData.formattedValue) {
-                event.target.value = elementData.userValue;
-              }
+              event.target.value = elementData.userValue;
             },
-            valueAsString(event) {
-              elementData.formattedValue = event.detail.valueAsString || "";
-              if (event.target !== document.activeElement) {
+            formattedValue(event) {
+              const { formattedValue } = event.detail;
+              elementData.formattedValue = formattedValue;
+              if (
+                formattedValue !== null &&
+                formattedValue !== undefined &&
+                event.target !== document.activeElement
+              ) {
                 // Input hasn't the focus so display formatted string
-                event.target.value = elementData.formattedValue;
+                event.target.value = formattedValue;
               }
               storage.setValue(id, {
-                formattedValue: elementData.formattedValue,
+                formattedValue,
               });
             },
             selRange(event) {
-              const [selStart, selEnd] = event.detail.selRange;
-              if (selStart >= 0 && selEnd < event.target.value.length) {
-                event.target.setSelectionRange(selStart, selEnd);
-              }
+              event.target.setSelectionRange(...event.detail.selRange);
             },
           };
           this._dispatchEventFromSandbox(actions, jsEvent);
@@ -1009,14 +1088,18 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
           if (commitKey === -1) {
             return;
           }
+          const { value } = event.target;
+          if (elementData.valueOnFocus === value) {
+            return;
+          }
           // Save the entered value
-          elementData.userValue = event.target.value;
+          elementData.userValue = value;
           this.linkService.eventBus?.dispatch("dispatcheventinsandbox", {
             source: this,
             detail: {
               id,
               name: "Keystroke",
-              value: event.target.value,
+              value,
               willCommit: true,
               commitKey,
               selStart: event.target.selectionStart,
@@ -1027,15 +1110,16 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
         const _blurListener = blurListener;
         blurListener = null;
         element.addEventListener("blur", event => {
-          elementData.userValue = event.target.value;
-          if (this._mouseState.isDown) {
+          const { value } = event.target;
+          elementData.userValue = value;
+          if (this._mouseState.isDown && elementData.valueOnFocus !== value) {
             // Focus out using the mouse: data are committed
             this.linkService.eventBus?.dispatch("dispatcheventinsandbox", {
               source: this,
               detail: {
                 id,
                 name: "Keystroke",
-                value: event.target.value,
+                value,
                 willCommit: true,
                 commitKey: 1,
                 selStart: event.target.selectionStart,
@@ -1048,19 +1132,56 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
 
         if (this.data.actions?.Keystroke) {
           element.addEventListener("beforeinput", event => {
-            elementData.formattedValue = "";
             const { data, target } = event;
             const { value, selectionStart, selectionEnd } = target;
+
+            let selStart = selectionStart,
+              selEnd = selectionEnd;
+
+            switch (event.inputType) {
+              // https://rawgit.com/w3c/input-events/v1/index.html#interface-InputEvent-Attributes
+              case "deleteWordBackward": {
+                const match = value
+                  .substring(0, selectionStart)
+                  .match(/\w*[^\w]*$/);
+                if (match) {
+                  selStart -= match[0].length;
+                }
+                break;
+              }
+              case "deleteWordForward": {
+                const match = value
+                  .substring(selectionStart)
+                  .match(/^[^\w]*\w*/);
+                if (match) {
+                  selEnd += match[0].length;
+                }
+                break;
+              }
+              case "deleteContentBackward":
+                if (selectionStart === selectionEnd) {
+                  selStart -= 1;
+                }
+                break;
+              case "deleteContentForward":
+                if (selectionStart === selectionEnd) {
+                  selEnd += 1;
+                }
+                break;
+            }
+
+            // We handle the event ourselves.
+            event.preventDefault();
             this.linkService.eventBus?.dispatch("dispatcheventinsandbox", {
               source: this,
               detail: {
                 id,
                 name: "Keystroke",
                 value,
-                change: data,
+                change: data || "",
                 willCommit: false,
-                selStart: selectionStart,
-                selEnd: selectionEnd,
+                selStart,
+                selEnd,
               },
             });
           });
@@ -1104,35 +1225,10 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
 
     this._setTextStyle(element);
     this._setBackgroundColor(element);
+    this._setDefaultPropertiesFromJS(element);
 
     this.container.appendChild(element);
     return this.container;
-  }
-
-  /**
-   * Apply text styles to the text in the element.
-   *
-   * @private
-   * @param {HTMLDivElement} element
-   * @memberof TextWidgetAnnotationElement
-   */
-  _setTextStyle(element) {
-    const TEXT_ALIGNMENT = ["left", "center", "right"];
-    const { fontSize, fontColor } = this.data.defaultAppearanceData;
-    const style = element.style;
-
-    // TODO: If the font-size is zero, calculate it based on the height and
-    //       width of the element.
-    // Not setting `style.fontSize` will use the default font-size for now.
-    if (fontSize) {
-      style.fontSize = `${fontSize}px`;
-    }
-
-    style.color = Util.makeHexColor(fontColor[0], fontColor[1], fontColor[2]);
-
-    if (this.data.textAlignment !== null) {
-      style.textAlign = TEXT_ALIGNMENT[this.data.textAlignment];
-    }
   }
 }
 
@@ -1213,6 +1309,7 @@ class CheckboxWidgetAnnotationElement extends WidgetAnnotationElement {
     }
 
     this._setBackgroundColor(element);
+    this._setDefaultPropertiesFromJS(element);
 
     this.container.appendChild(element);
     return this.container;
@@ -1300,6 +1397,7 @@ class RadioButtonWidgetAnnotationElement extends WidgetAnnotationElement {
     }
 
     this._setBackgroundColor(element);
+    this._setDefaultPropertiesFromJS(element);
 
     this.container.appendChild(element);
     return this.container;
@@ -1322,6 +1420,8 @@ class PushButtonWidgetAnnotationElement extends LinkAnnotationElement {
       container.title = this.data.alternativeText;
     }
 
+    this._setDefaultPropertiesFromJS(container);
+
     return container;
   }
 }
@@ -1340,10 +1440,8 @@ class ChoiceWidgetAnnotationElement extends WidgetAnnotationElement {
       value: this.data.fieldValue,
     });
 
-    let { fontSize } = this.data.defaultAppearanceData;
-    if (!fontSize) {
-      fontSize = 9;
-    }
+    const fontSize =
+      this.data.defaultAppearanceData.fontSize || DEFAULT_FONT_SIZE;
     const fontSizeStyle = `calc(${fontSize}px * var(--zoom-factor))`;
 
     const selectElement = document.createElement("select");
@@ -1352,8 +1450,6 @@ class ChoiceWidgetAnnotationElement extends WidgetAnnotationElement {
     selectElement.name = this.data.fieldName;
     selectElement.setAttribute("id", id);
     selectElement.tabIndex = DEFAULT_TAB_INDEX;
-
-    selectElement.style.fontSize = `${fontSize}px`;
 
     if (!this.data.combo) {
       // List boxes have a size and (optionally) multiple selection.
@@ -1533,7 +1629,14 @@ class ChoiceWidgetAnnotationElement extends WidgetAnnotationElement {
       });
     }
 
+    if (this.data.combo) {
+      this._setTextStyle(selectElement);
+    } else {
+      // Just use the default font size...
+      // it's a bit hard to guess what is a good size.
+    }
     this._setBackgroundColor(selectElement);
+    this._setDefaultPropertiesFromJS(selectElement);
 
     this.container.appendChild(selectElement);
     return this.container;
@@ -2221,7 +2324,6 @@ class FileAttachmentAnnotationElement extends AnnotationElement {
 
     this.linkService.eventBus?.dispatch("fileattachmentannotation", {
       source: this,
-      id: stringToPDFString(filename),
       filename,
       content,
     });
@@ -2424,7 +2526,9 @@ class AnnotationLayer {
       }
 
       const { firstChild } = element;
-      if (firstChild.nodeName === "CANVAS") {
+      if (!firstChild) {
+        element.appendChild(canvas);
+      } else if (firstChild.nodeName === "CANVAS") {
         element.replaceChild(canvas, firstChild);
       } else {
         element.insertBefore(canvas, firstChild);

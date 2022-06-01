@@ -40,6 +40,7 @@ import {
   DEFAULT_SCALE,
   DEFAULT_SCALE_DELTA,
   DEFAULT_SCALE_VALUE,
+  docStyle,
   getVisibleElements,
   isPortraitOrientation,
   isValidRotation,
@@ -116,6 +117,9 @@ const PagesCountLimit = {
  * @property {IL10n} l10n - Localization service.
  * @property {boolean} [enablePermissions] - Enables PDF document permissions,
  *   when they exist. The default value is `false`.
+ * @property {Object} [pageColors] - Overwrites background and foreground colors
+ *   with user defined ones in order to improve readability in high contrast
+ *   mode.
  */
 
 class PDFPageViewBuffer {
@@ -262,6 +266,24 @@ class BaseViewer {
     this.maxCanvasPixels = options.maxCanvasPixels;
     this.l10n = options.l10n || NullL10n;
     this.#enablePermissions = options.enablePermissions || false;
+    this.pageColors = options.pageColors || null;
+
+    if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("MOZCENTRAL")) {
+      if (
+        this.pageColors &&
+        !(
+          CSS.supports("color", this.pageColors.background) &&
+          CSS.supports("color", this.pageColors.foreground)
+        )
+      ) {
+        if (this.pageColors.background || this.pageColors.foreground) {
+          console.warn(
+            "BaseViewer: Ignoring `pageColors`-option, since the browser doesn't support the values used."
+          );
+        }
+        this.pageColors = null;
+      }
+    }
 
     this.defaultRenderingQueue = !options.renderingQueue;
     if (this.defaultRenderingQueue) {
@@ -271,7 +293,6 @@ class BaseViewer {
     } else {
       this.renderingQueue = options.renderingQueue;
     }
-    this._doc = document.documentElement;
 
     this.scroll = watchScroll(this.container, this._scrollUpdate.bind(this));
     this.presentationModeState = PresentationModeState.UNKNOWN;
@@ -281,6 +302,7 @@ class BaseViewer {
     if (this.removePageBorders) {
       this.viewer.classList.add("removePageBorders");
     }
+    this.updateContainerHeightCss();
     // Defer the dispatching of this event, to give other viewer components
     // time to initialize *and* register 'baseviewerinit' event listeners.
     Promise.resolve().then(() => {
@@ -698,6 +720,7 @@ class BaseViewer {
             renderer: this.renderer,
             useOnlyCssZoom: this.useOnlyCssZoom,
             maxCanvasPixels: this.maxCanvasPixels,
+            pageColors: this.pageColors,
             l10n: this.l10n,
           });
           this._pages.push(pageView);
@@ -885,23 +908,10 @@ class BaseViewer {
     // ... and clear out the active ones.
     state.pages.length = 0;
 
-    if (this._spreadMode === SpreadMode.NONE) {
+    if (this._spreadMode === SpreadMode.NONE && !this.isInPresentationMode) {
       // Finally, append the new page to the viewer.
       const pageView = this._pages[pageNumber - 1];
-
-      if (this.isInPresentationMode) {
-        const spread = document.createElement("div");
-        spread.className = "spread";
-        const dummyPage = document.createElement("div");
-        dummyPage.className = "dummyPage";
-        dummyPage.style.height = `${this.container.clientHeight}px`;
-
-        spread.appendChild(dummyPage);
-        spread.appendChild(pageView.div);
-        viewer.appendChild(spread);
-      } else {
-        viewer.appendChild(pageView.div);
-      }
+      viewer.appendChild(pageView.div);
 
       state.pages.push(pageView);
     } else {
@@ -909,7 +919,10 @@ class BaseViewer {
         parity = this._spreadMode - 1;
 
       // Determine the pageIndices in the new spread.
-      if (pageNumber % 2 !== parity) {
+      if (parity === -1) {
+        // PresentationMode is active, with `SpreadMode.NONE` set.
+        pageIndexSet.add(pageNumber - 1);
+      } else if (pageNumber % 2 !== parity) {
         // Left-hand side page.
         pageIndexSet.add(pageNumber - 1);
         pageIndexSet.add(pageNumber);
@@ -922,6 +935,12 @@ class BaseViewer {
       // Finally, append the new pages to the viewer and apply the spreadMode.
       const spread = document.createElement("div");
       spread.className = "spread";
+
+      if (this.isInPresentationMode) {
+        const dummyPage = document.createElement("div");
+        dummyPage.className = "dummyPage";
+        spread.appendChild(dummyPage);
+      }
 
       for (const i of pageIndexSet) {
         const pageView = this._pages[i];
@@ -946,10 +965,12 @@ class BaseViewer {
     this.update();
   }
 
-  _scrollIntoView({ pageDiv, pageNumber, pageSpot = null }) {
+  #scrollIntoView(pageView, pageSpot = null) {
+    const { div, id } = pageView;
+
     if (this._scrollMode === ScrollMode.PAGE) {
       // Ensure that `this._currentPageNumber` is correct.
-      this._setCurrentPageNumber(pageNumber);
+      this._setCurrentPageNumber(id);
 
       this.#ensurePageViewVisible();
       // Ensure that rendering always occurs, to avoid showing a blank page,
@@ -958,8 +979,8 @@ class BaseViewer {
     }
 
     if (!pageSpot && !this.isInPresentationMode) {
-      const left = pageDiv.offsetLeft + pageDiv.clientLeft;
-      const right = left + pageDiv.clientWidth;
+      const left = div.offsetLeft + div.clientLeft,
+        right = left + div.clientWidth;
       const { scrollLeft, clientWidth } = this.container;
       if (
         this._scrollMode === ScrollMode.HORIZONTAL ||
@@ -969,7 +990,7 @@ class BaseViewer {
         pageSpot = { left: 0, top: 0 };
       }
     }
-    scrollIntoView(pageDiv, pageSpot);
+    scrollIntoView(div, pageSpot);
   }
 
   /**
@@ -977,14 +998,6 @@ class BaseViewer {
    * only because of limited numerical precision.
    */
   #isSameScale(newScale) {
-    if (
-      this.isInPresentationMode &&
-      this.container.clientHeight !== this.#previousContainerHeight
-    ) {
-      // Ensure that the current page remains centered vertically if/when
-      // the window is resized while PresentationMode is active.
-      return false;
-    }
     return (
       newScale === this._currentScale ||
       Math.abs(newScale - this._currentScale) < 1e-15
@@ -1005,7 +1018,7 @@ class BaseViewer {
       return;
     }
 
-    this._doc.style.setProperty("--zoom-factor", newScale);
+    docStyle.setProperty("--zoom-factor", newScale);
 
     const updateArgs = { scale: newScale };
     for (const pageView of this._pages) {
@@ -1045,8 +1058,7 @@ class BaseViewer {
     if (this.defaultRenderingQueue) {
       this.update();
     }
-
-    this.#previousContainerHeight = this.container.clientHeight;
+    this.updateContainerHeightCss();
   }
 
   /**
@@ -1079,8 +1091,7 @@ class BaseViewer {
         hPadding = vPadding = 4;
       } else if (this.removePageBorders) {
         hPadding = vPadding = 0;
-      }
-      if (this._scrollMode === ScrollMode.HORIZONTAL) {
+      } else if (this._scrollMode === ScrollMode.HORIZONTAL) {
         [hPadding, vPadding] = [vPadding, hPadding]; // Swap the padding values.
       }
       const pageWidthScale =
@@ -1123,15 +1134,13 @@ class BaseViewer {
    * Refreshes page view: scrolls to the current page and updates the scale.
    */
   #resetCurrentPageView() {
-    const pageNumber = this._currentPageNumber;
+    const pageView = this._pages[this._currentPageNumber - 1];
 
     if (this.isInPresentationMode) {
       // Fixes the case when PDF has different page sizes.
       this._setScale(this._currentScaleValue, true);
     }
-
-    const pageView = this._pages[pageNumber - 1];
-    this._scrollIntoView({ pageDiv: pageView.div, pageNumber });
+    this.#scrollIntoView(pageView);
   }
 
   /**
@@ -1275,10 +1284,7 @@ class BaseViewer {
     }
 
     if (scale === "page-fit" && !destArray[4]) {
-      this._scrollIntoView({
-        pageDiv: pageView.div,
-        pageNumber,
-      });
+      this.#scrollIntoView(pageView);
       return;
     }
 
@@ -1296,11 +1302,7 @@ class BaseViewer {
       left = Math.max(left, 0);
       top = Math.max(top, 0);
     }
-    this._scrollIntoView({
-      pageDiv: pageView.div,
-      pageSpot: { left, top },
-      pageNumber,
-    });
+    this.#scrollIntoView(pageView, /* pageSpot = */ { left, top });
   }
 
   _updateLocation(firstPage) {
@@ -2059,6 +2061,16 @@ class BaseViewer {
       newScale = Math.max(MIN_SCALE, newScale);
     } while (--steps > 0 && newScale > MIN_SCALE);
     this.currentScaleValue = newScale;
+  }
+
+  updateContainerHeightCss() {
+    const height = this.container.clientHeight;
+
+    if (height !== this.#previousContainerHeight) {
+      this.#previousContainerHeight = height;
+
+      docStyle.setProperty("--viewer-container-height", `${height}px`);
+    }
   }
 }
 
