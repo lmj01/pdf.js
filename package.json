@@ -68,7 +68,7 @@
   },
   "scripts": {
     "postinstall": "cross-env PUPPETEER_PRODUCT=firefox node node_modules/puppeteer/install.js",
-    "watch": "http-server ./build/generic -p 5800"
+    "watch": "http-server ./build -p 5800"
   },
   "repository": {
     "type": "git",

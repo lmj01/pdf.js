@@ -26,14 +26,17 @@
   </head>
   <body tabindex="1">
     <div class="app-pdf">
-      <iframe name="reportPdf" frameborder="0" width="100%" height="100%" src="../web/viewer.html"></iframe>
-      <iframe name="23" width="100%" height="20px"></iframe>
+      <iframe name="generic" frameborder="0" width="100%" height="100%" src="../generic/web/viewer.html"></iframe>
+    </div> 
+    <div class="app-pdf">
+      <iframe name="minified" frameborder="0" width="100%" height="100%" src="../minified/web/viewer.html"></iframe>
     </div> 
   </body>
   <script type="module">
-    function openPdfUrl(urlOrBuffer, cssFileName='viewer.css') {
+    function openPdfUrl(urlOrBuffer) {
+      const name = location.href.split('name=').pop() || 'minified';
       for (let i = 0; i < window.frames.length; i++) {
-        if (window.frames[i].name == 'reportPdf') {
+        if (window.frames[i].name == name) {
           const pdfViewer = window.frames[i].PDFViewerApplication;
           if (pdfViewer) {
             console.log(pdfViewer);
@@ -48,7 +51,7 @@
       }
     }
     window.onload = (event) => {
-      // openPdfUrl('/test/helloworld.pdf');
+      // openPdfUrl('./helloworld.pdf');
       fetch('./helloworld.pdf').then(res=>res.arrayBuffer()).then(buffer => {
         openPdfUrl(buffer);
       })
