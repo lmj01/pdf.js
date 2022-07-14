@@ -32,14 +32,14 @@
   </body>
   <!-- <script type="text/javascript"> -->
   <script type="module">
-    function openPdfUrl(url, cssFileName='viewer.css') {
+    function openPdfUrl(urlOrBuffer, cssFileName='viewer.css') {
       for (let i = 0; i < window.frames.length; i++) {
         if (window.frames[i].name == 'reportPdf') {
           initialPdf(window.frames[i].document, cssFileName, () => {
             const pdfViewer = window.frames[i].PDFViewerApplication;
             if (pdfViewer) {
               console.log(pdfViewer);
-              pdfViewer.open(url);
+              pdfViewer.open(urlOrBuffer);
               pdfViewer.appConfig.secondaryToolbar.cursorHandToolButton.click();
             }  
           });
@@ -64,9 +64,10 @@
       })
     }
     window.onload = (event) => {
-      openPdfUrl('/test/helloworld.pdf'
-        ,'viewer.ui2.css'
-      );
+      // openPdfUrl('/test/helloworld.pdf');
+      fetch('/test/helloworld.pdf').then(res=>res.arrayBuffer()).then(buffer => {
+        openPdfUrl(buffer);
+      })
     };
     
   </script>
