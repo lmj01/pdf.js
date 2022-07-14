@@ -38,6 +38,7 @@
           initialPdf(window.frames[i].document, cssFileName, () => {
             const pdfViewer = window.frames[i].PDFViewerApplication;
             if (pdfViewer) {
+              console.log(pdfViewer);
               pdfViewer.open(url);
               pdfViewer.appConfig.secondaryToolbar.cursorHandToolButton.click();
             }  

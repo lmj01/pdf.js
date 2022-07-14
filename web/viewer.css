@@ -909,6 +909,7 @@ select {
 /*#endif*/
 
 #download::before,
+#mjdownload::before,
 #secondaryDownload::before {
   mask-image: var(--toolbarButton-download-icon);
 }

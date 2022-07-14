@@ -11,3 +11,6 @@ node_modules\.bin\gulp generic
 
 // 手动设置手形工具
 pdfViewer.appConfig.secondaryToolbar.cursorHandToolButton.click()
+
+## 定制化menu
+增加一个下载按钮，直接在tool-bar的middle中间部分添加一个下载按钮

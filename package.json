@@ -67,7 +67,8 @@
     "yargs": "^17.5.1"
   },
   "scripts": {
-    "postinstall": "cross-env PUPPETEER_PRODUCT=firefox node node_modules/puppeteer/install.js"
+    "postinstall": "cross-env PUPPETEER_PRODUCT=firefox node node_modules/puppeteer/install.js",
+    "watch": "http-server ./build/generic -p 5800"
   },
   "repository": {
     "type": "git",
