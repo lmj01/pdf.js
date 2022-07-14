@@ -28,44 +28,28 @@
     <div class="app-pdf">
       <iframe name="reportPdf" frameborder="0" width="100%" height="100%" src="../web/viewer.html"></iframe>
       <iframe name="23" width="100%" height="20px"></iframe>
-    </div> <!-- outerContainer -->
+    </div> 
   </body>
-  <!-- <script type="text/javascript"> -->
   <script type="module">
     function openPdfUrl(urlOrBuffer, cssFileName='viewer.css') {
       for (let i = 0; i < window.frames.length; i++) {
         if (window.frames[i].name == 'reportPdf') {
-          initialPdf(window.frames[i].document, cssFileName, () => {
-            const pdfViewer = window.frames[i].PDFViewerApplication;
-            if (pdfViewer) {
-              console.log(pdfViewer);
-              pdfViewer.open(urlOrBuffer);
-              pdfViewer.appConfig.secondaryToolbar.cursorHandToolButton.click();
-            }  
-          });
+          const pdfViewer = window.frames[i].PDFViewerApplication;
+          if (pdfViewer) {
+            console.log(pdfViewer);
+            pdfViewer.open(urlOrBuffer);
+            pdfViewer.appConfig.secondaryToolbar.cursorHandToolButton.click();
+            pdfViewer._contentDispositionFilename = 'mjddd.pdf';
+            pdfViewer.appConfig.toolbar.mjdownload.addEventListener('click', ()=> {
+              pdfViewer.appConfig.secondaryToolbar.downloadButton.click();
+            });
+          }  
         }
       }
     }
-    function initialPdf(curDocument, cssFileName, callback) {
-      fetch(`../web/${cssFileName}`).then(res=>res.text()).then(textCss =>{
-        const elStyle = document.createElement('style');
-        elStyle.type = 'text/css';
-        elStyle.innerHTML = `${textCss}`;
-        curDocument.head.appendChild(elStyle);        
-        fetch(`../web/viewer.js`).then(res=>res.text()).then(textJs => {
-          const elScript = document.createElement('script');
-          elScript.type = 'text/javascript';
-          elScript.innerHTML = `${textJs}`;
-          curDocument.body.appendChild(elScript);
-          setTimeout(() => {
-            if (callback) callback();  
-          }, 200)
-        })
-      })
-    }
     window.onload = (event) => {
       // openPdfUrl('/test/helloworld.pdf');
-      fetch('/test/helloworld.pdf').then(res=>res.arrayBuffer()).then(buffer => {
+      fetch('./helloworld.pdf').then(res=>res.arrayBuffer()).then(buffer => {
         openPdfUrl(buffer);
       })
     };
