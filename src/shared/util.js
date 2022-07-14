@@ -21,6 +21,7 @@ const FONT_IDENTITY_MATRIX = [0.001, 0, 0, 0.001, 0, 0];
 // Represent the percentage of the height of a single-line field over
 // the font size. Acrobat seems to use this value.
 const LINE_FACTOR = 1.35;
+const LINE_DESCENT_FACTOR = 0.35;
 
 /**
  * Refer to the `WorkerTransport.getRenderingIntent`-method in the API, to see
@@ -49,6 +50,22 @@ const AnnotationMode = {
   ENABLE: 1,
   ENABLE_FORMS: 2,
   ENABLE_STORAGE: 3,
+};
+
+const AnnotationEditorPrefix = "pdfjs_internal_editor_";
+
+const AnnotationEditorType = {
+  DISABLE: -1,
+  NONE: 0,
+  FREETEXT: 3,
+  INK: 15,
+};
+
+const AnnotationEditorParamsType = {
+  FREETEXT_SIZE: 0,
+  FREETEXT_COLOR: 1,
+  INK_COLOR: 2,
+  INK_THICKNESS: 3,
 };
 
 // Permission flags from Table 22, Section 7.6.3.2 of the PDF specification.
@@ -328,7 +345,9 @@ const OPS = {
   paintFormXObjectEnd: 75,
   beginGroup: 76,
   endGroup: 77,
+  /** @deprecated unused */
   beginAnnotations: 78,
+  /** @deprecated unused */
   endAnnotations: 79,
   beginAnnotation: 80,
   endAnnotation: 81,
@@ -1135,6 +1154,9 @@ export {
   AbortException,
   AnnotationActionEventType,
   AnnotationBorderStyleType,
+  AnnotationEditorParamsType,
+  AnnotationEditorPrefix,
+  AnnotationEditorType,
   AnnotationFieldFlag,
   AnnotationFlag,
   AnnotationMarkedState,
@@ -1166,6 +1188,7 @@ export {
   isArrayBuffer,
   isArrayEqual,
   isAscii,
+  LINE_DESCENT_FACTOR,
   LINE_FACTOR,
   MissingPDFException,
   objectFromMap,

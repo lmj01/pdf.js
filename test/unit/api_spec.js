@@ -48,6 +48,7 @@ import {
   RenderingCancelledException,
   StatTimer,
 } from "../../src/display/display_utils.js";
+import { AnnotationStorage } from "../../src/display/annotation_storage.js";
 import { AutoPrintRegExp } from "../../web/ui_utils.js";
 import { GlobalImageCache } from "../../src/core/image_utils.js";
 import { GlobalWorkerOptions } from "../../src/display/worker_options.js";
@@ -77,7 +78,9 @@ describe("api", function () {
   }
 
   function mergeText(items) {
-    return items.map(chunk => chunk.str + (chunk.hasEOL ? "\n" : "")).join("");
+    return items
+      .map(chunk => (chunk.str ?? "") + (chunk.hasEOL ? "\n" : ""))
+      .join("");
   }
 
   describe("getDocument", function () {
@@ -669,6 +672,38 @@ describe("api", function () {
       }
 
       await Promise.all([loadingTask1.destroy(), loadingTask2.destroy()]);
+    });
+
+    it("creates pdf doc from PDF file with bad /Resources entry", async function () {
+      const loadingTask = getDocument(buildGetDocumentParams("issue15150.pdf"));
+      expect(loadingTask instanceof PDFDocumentLoadingTask).toEqual(true);
+
+      const pdfDocument = await loadingTask.promise;
+      expect(pdfDocument.numPages).toEqual(1);
+
+      const page = await pdfDocument.getPage(1);
+      expect(page instanceof PDFPageProxy).toEqual(true);
+
+      const opList = await page.getOperatorList();
+      expect(opList.fnArray).toEqual([
+        OPS.setLineWidth,
+        OPS.setStrokeRGBColor,
+        OPS.constructPath,
+        OPS.closeStroke,
+      ]);
+      expect(opList.argsArray).toEqual([
+        [0.5],
+        new Uint8ClampedArray([255, 0, 0]),
+        [
+          [OPS.moveTo, OPS.lineTo],
+          [0, 9.75, 0.5, 9.75],
+          [0, 0.5, 9.75, 9.75],
+        ],
+        null,
+      ]);
+      expect(opList.lastChunk).toEqual(true);
+
+      await loadingTask.destroy();
     });
   });
 
@@ -1333,6 +1368,7 @@ describe("api", function () {
             page: 0,
             strokeColor: null,
             fillColor: null,
+            rotation: 0,
             type: "text",
           },
         ],
@@ -1354,6 +1390,7 @@ describe("api", function () {
             page: 0,
             strokeColor: null,
             fillColor: new Uint8ClampedArray([192, 192, 192]),
+            rotation: 0,
             type: "button",
           },
         ],
@@ -2272,6 +2309,28 @@ Caron Broadcasting, Inc., an Ohio corporation (“Lessee”).`)
       await loadingTask.destroy();
     });
 
+    it("gets text content with or without includeMarkedContent, and compare (issue 15094)", async function () {
+      if (isNodeJS) {
+        pending("Linked test-cases are not supported in Node.js.");
+      }
+
+      const loadingTask = getDocument(buildGetDocumentParams("pdf.pdf"));
+      const pdfDoc = await loadingTask.promise;
+      const pdfPage = await pdfDoc.getPage(568);
+      let { items } = await pdfPage.getTextContent({
+        includeMarkedContent: false,
+      });
+      const textWithoutMC = mergeText(items);
+      ({ items } = await pdfPage.getTextContent({
+        includeMarkedContent: true,
+      }));
+      const textWithMC = mergeText(items);
+
+      expect(textWithoutMC).toEqual(textWithMC);
+
+      await loadingTask.destroy();
+    });
+
     it("gets empty structure tree", async function () {
       const tree = await page.getStructTree();
 
@@ -2443,15 +2502,15 @@ Caron Broadcasting, Inc., an Ohio corporation (“Lessee”).`)
       const opListAnnotEnable = await pdfPage.getOperatorList({
         annotationMode: AnnotationMode.ENABLE,
       });
-      expect(opListAnnotEnable.fnArray.length).toBeGreaterThan(150);
-      expect(opListAnnotEnable.argsArray.length).toBeGreaterThan(150);
+      expect(opListAnnotEnable.fnArray.length).toBeGreaterThan(140);
+      expect(opListAnnotEnable.argsArray.length).toBeGreaterThan(140);
       expect(opListAnnotEnable.lastChunk).toEqual(true);
 
       const opListAnnotEnableForms = await pdfPage.getOperatorList({
         annotationMode: AnnotationMode.ENABLE_FORMS,
       });
-      expect(opListAnnotEnableForms.fnArray.length).toBeGreaterThan(40);
-      expect(opListAnnotEnableForms.argsArray.length).toBeGreaterThan(40);
+      expect(opListAnnotEnableForms.fnArray.length).toBeGreaterThan(30);
+      expect(opListAnnotEnableForms.argsArray.length).toBeGreaterThan(30);
       expect(opListAnnotEnableForms.lastChunk).toEqual(true);
 
       const opListAnnotEnableStorage = await pdfPage.getOperatorList({
@@ -2823,6 +2882,75 @@ Caron Broadcasting, Inc., an Ohio corporation (“Lessee”).`)
 
       await loadingTask.destroy();
       firstImgData = null;
+    });
+
+    it("render for printing, with `printAnnotationStorage` set", async function () {
+      async function getPrintData(printAnnotationStorage = null) {
+        const canvasAndCtx = CanvasFactory.create(
+          viewport.width,
+          viewport.height
+        );
+        const renderTask = pdfPage.render({
+          canvasContext: canvasAndCtx.context,
+          canvasFactory: CanvasFactory,
+          viewport,
+          intent: "print",
+          annotationMode: AnnotationMode.ENABLE_STORAGE,
+          printAnnotationStorage,
+        });
+
+        await renderTask.promise;
+        const printData = canvasAndCtx.canvas.toDataURL();
+        CanvasFactory.destroy(canvasAndCtx);
+
+        return printData;
+      }
+
+      const loadingTask = getDocument(
+        buildGetDocumentParams("annotation-tx.pdf")
+      );
+      const pdfDoc = await loadingTask.promise;
+      const pdfPage = await pdfDoc.getPage(1);
+      const viewport = pdfPage.getViewport({ scale: 1 });
+
+      // Update the contents of the form-field.
+      const { annotationStorage } = pdfDoc;
+      annotationStorage.setValue("22R", { value: "Hello World" });
+
+      // Render for printing, with default parameters.
+      const printOriginalData = await getPrintData();
+
+      // Get the *frozen* print-storage for use during printing.
+      const printAnnotationStorage = annotationStorage.print;
+      // Update the contents of the form-field again.
+      annotationStorage.setValue("22R", { value: "Printing again..." });
+
+      const annotationHash = AnnotationStorage.getHash(
+        annotationStorage.serializable
+      );
+      const printAnnotationHash = AnnotationStorage.getHash(
+        printAnnotationStorage.serializable
+      );
+      // Sanity check to ensure that the print-storage didn't change,
+      // after the form-field was updated.
+      expect(printAnnotationHash).not.toEqual(annotationHash);
+
+      // Render for printing again, after updating the form-field,
+      // with default parameters.
+      const printAgainData = await getPrintData();
+
+      // Render for printing again, after updating the form-field,
+      // with `printAnnotationStorage` set.
+      const printStorageData = await getPrintData(printAnnotationStorage);
+
+      // Ensure that printing again, with default parameters,
+      // actually uses the "new" form-field data.
+      expect(printAgainData).not.toEqual(printOriginalData);
+      // Finally ensure that printing, with `printAnnotationStorage` set,
+      // still uses the "previous" form-field data.
+      expect(printStorageData).toEqual(printOriginalData);
+
+      await loadingTask.destroy();
     });
   });
 

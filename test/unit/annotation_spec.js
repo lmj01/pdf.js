@@ -22,6 +22,7 @@ import {
 } from "../../src/core/annotation.js";
 import {
   AnnotationBorderStyleType,
+  AnnotationEditorType,
   AnnotationFieldFlag,
   AnnotationFlag,
   AnnotationType,
@@ -2057,6 +2058,52 @@ describe("annotation", function () {
       );
     });
 
+    it("should save rotated text", async function () {
+      const textWidgetRef = Ref.get(123, 0);
+      const xref = new XRefMock([
+        { ref: textWidgetRef, data: textWidgetDict },
+        helvRefObj,
+      ]);
+      partialEvaluator.xref = xref;
+      const task = new WorkerTask("test save");
+
+      const annotation = await AnnotationFactory.create(
+        xref,
+        textWidgetRef,
+        pdfManagerMock,
+        idFactoryMock
+      );
+      const annotationStorage = new Map();
+      annotationStorage.set(annotation.data.id, {
+        value: "hello world",
+        rotation: 90,
+      });
+
+      const data = await annotation.save(
+        partialEvaluator,
+        task,
+        annotationStorage
+      );
+      expect(data.length).toEqual(2);
+      const [oldData, newData] = data;
+      expect(oldData.ref).toEqual(Ref.get(123, 0));
+      expect(newData.ref).toEqual(Ref.get(2, 0));
+
+      oldData.data = oldData.data.replace(/\(D:\d+\)/, "(date)");
+      expect(oldData.data).toEqual(
+        "123 0 obj\n" +
+          "<< /Type /Annot /Subtype /Widget /FT /Tx /DA (/Helv 5 Tf) /DR " +
+          "<< /Font << /Helv 314 0 R>>>> /Rect [0 0 32 10] " +
+          "/V (hello world) /AP << /N 2 0 R>> /M (date) /MK << /R 90>>>>\nendobj\n"
+      );
+      expect(newData.data).toEqual(
+        "2 0 obj\n<< /Length 74 /Subtype /Form /Resources " +
+          "<< /Font << /Helv 314 0 R>>>> /BBox [0 0 32 10] /Matrix [0 1 -1 0 32 0]>> stream\n" +
+          "/Tx BMC q BT /Helv 5 Tf 1 0 0 1 0 0 Tm 2 3.04 Td (hello world) Tj " +
+          "ET Q EMC\nendstream\nendobj\n"
+      );
+    });
+
     it("should get field object for usage in JS sandbox", async function () {
       const textWidgetRef = Ref.get(123, 0);
       const xDictRef = Ref.get(141, 0);
@@ -2599,6 +2646,57 @@ describe("annotation", function () {
           "<< /Type /Annot /Subtype /Widget /FT /Btn " +
           "/AP << /N << /Checked 314 0 R /Off 271 0 R>>>> " +
           "/V /Checked /AS /Checked /M (date)>>\nendobj\n"
+      );
+
+      annotationStorage.set(annotation.data.id, { value: false });
+
+      const data = await annotation.save(
+        partialEvaluator,
+        task,
+        annotationStorage
+      );
+      expect(data).toEqual(null);
+    });
+
+    it("should save rotated checkboxes", async function () {
+      const appearanceStatesDict = new Dict();
+      const normalAppearanceDict = new Dict();
+
+      normalAppearanceDict.set("Checked", Ref.get(314, 0));
+      normalAppearanceDict.set("Off", Ref.get(271, 0));
+      appearanceStatesDict.set("N", normalAppearanceDict);
+
+      buttonWidgetDict.set("AP", appearanceStatesDict);
+      buttonWidgetDict.set("V", Name.get("Off"));
+
+      const buttonWidgetRef = Ref.get(123, 0);
+      const xref = new XRefMock([
+        { ref: buttonWidgetRef, data: buttonWidgetDict },
+      ]);
+      partialEvaluator.xref = xref;
+      const task = new WorkerTask("test save");
+
+      const annotation = await AnnotationFactory.create(
+        xref,
+        buttonWidgetRef,
+        pdfManagerMock,
+        idFactoryMock
+      );
+      const annotationStorage = new Map();
+      annotationStorage.set(annotation.data.id, { value: true, rotation: 180 });
+
+      const [oldData] = await annotation.save(
+        partialEvaluator,
+        task,
+        annotationStorage
+      );
+      oldData.data = oldData.data.replace(/\(D:\d+\)/, "(date)");
+      expect(oldData.ref).toEqual(Ref.get(123, 0));
+      expect(oldData.data).toEqual(
+        "123 0 obj\n" +
+          "<< /Type /Annot /Subtype /Widget /FT /Btn " +
+          "/AP << /N << /Checked 314 0 R /Off 271 0 R>>>> " +
+          "/V /Checked /AS /Checked /M (date) /MK << /R 180>>>>\nendobj\n"
       );
 
       annotationStorage.set(annotation.data.id, { value: false });
@@ -3484,6 +3582,67 @@ describe("annotation", function () {
       );
     });
 
+    it("should save rotated choice", async function () {
+      choiceWidgetDict.set("Opt", ["A", "B", "C"]);
+      choiceWidgetDict.set("V", "A");
+
+      const choiceWidgetRef = Ref.get(123, 0);
+      const xref = new XRefMock([
+        { ref: choiceWidgetRef, data: choiceWidgetDict },
+        fontRefObj,
+      ]);
+      partialEvaluator.xref = xref;
+      const task = new WorkerTask("test save");
+
+      const annotation = await AnnotationFactory.create(
+        xref,
+        choiceWidgetRef,
+        pdfManagerMock,
+        idFactoryMock
+      );
+      const annotationStorage = new Map();
+      annotationStorage.set(annotation.data.id, { value: "C", rotation: 270 });
+
+      const data = await annotation.save(
+        partialEvaluator,
+        task,
+        annotationStorage
+      );
+      expect(data.length).toEqual(2);
+      const [oldData, newData] = data;
+      expect(oldData.ref).toEqual(Ref.get(123, 0));
+      expect(newData.ref).toEqual(Ref.get(2, 0));
+
+      oldData.data = oldData.data.replace(/\(D:\d+\)/, "(date)");
+      expect(oldData.data).toEqual(
+        "123 0 obj\n" +
+          "<< /Type /Annot /Subtype /Widget /FT /Ch /DA (/Helv 5 Tf) /DR " +
+          "<< /Font << /Helv 314 0 R>>>> " +
+          "/Rect [0 0 32 10] /Opt [(A) (B) (C)] /V (C) " +
+          "/AP << /N 2 0 R>> /M (date) /MK << /R 270>>>>\nendobj\n"
+      );
+      expect(newData.data).toEqual(
+        [
+          "2 0 obj",
+          "<< /Length 170 /Subtype /Form /Resources << /Font << /Helv 314 0 R>>>> " +
+            "/BBox [0 0 32 10] /Matrix [0 -1 1 0 0 10]>> stream",
+          "/Tx BMC q",
+          "1 1 10 32 re W n",
+          "0.600006 0.756866 0.854904 rg",
+          "1 11.75 10 6.75 re f",
+          "BT",
+          "/Helv 5 Tf",
+          "1 0 0 1 0 32 Tm",
+          "2 -5.88 Td (A) Tj",
+          "0 -6.75 Td (B) Tj",
+          "0 -6.75 Td (C) Tj",
+          "ET Q EMC",
+          "endstream",
+          "endobj\n",
+        ].join("\n")
+      );
+    });
+
     it("should save choice", async function () {
       choiceWidgetDict.set("Opt", ["A", "B", "C"]);
       choiceWidgetDict.set("V", "A");
@@ -3857,6 +4016,107 @@ describe("annotation", function () {
     );
   });
 
+  describe("FreeTextAnnotation", () => {
+    it("should create a new FreeText annotation", async () => {
+      partialEvaluator.xref = new XRefMock();
+      const task = new WorkerTask("test FreeText creation");
+      const data = await AnnotationFactory.saveNewAnnotations(
+        partialEvaluator,
+        task,
+        [
+          {
+            annotationType: AnnotationEditorType.FREETEXT,
+            rect: [12, 34, 56, 78],
+            rotation: 0,
+            fontSize: 10,
+            color: [0, 0, 0],
+            value: "Hello PDF.js World!",
+          },
+        ]
+      );
+
+      const base = data.annotations[0].data.replace(/\(D:\d+\)/, "(date)");
+      expect(base).toEqual(
+        "2 0 obj\n" +
+          "<< /Type /Annot /Subtype /FreeText /CreationDate (date) " +
+          "/Rect [12 34 56 78] /DA (/Helv 10 Tf 0 g) /Contents (Hello PDF.js World!) " +
+          "/F 4 /Border [0 0 0] /Rotate 0 /AP << /N 3 0 R>>>>\n" +
+          "endobj\n"
+      );
+
+      const font = data.dependencies[0].data;
+      expect(font).toEqual(
+        "1 0 obj\n" +
+          "<< /BaseFont /Helvetica /Type /Font /Subtype /Type1 /Encoding " +
+          "/WinAnsiEncoding>>\n" +
+          "endobj\n"
+      );
+
+      const appearance = data.dependencies[1].data;
+      expect(appearance).toEqual(
+        "3 0 obj\n" +
+          "<< /FormType 1 /Subtype /Form /Type /XObject /BBox [0 0 44 44] " +
+          "/Length 101 /Resources << /Font << /Helv 1 0 R>>>>>> stream\n" +
+          "q\n" +
+          "0 0 44 44 re W n\n" +
+          "BT\n" +
+          "1 0 0 1 0 47.5 Tm 0 Tc 0 g\n" +
+          "/Helv 10 Tf\n" +
+          "0 -13.5 Td (Hello PDF.js World!) Tj\n" +
+          "ET\n" +
+          "Q\n" +
+          "endstream\n" +
+          "\n" +
+          "endobj\n"
+      );
+    });
+
+    it("should render an added FreeText annotation for printing", async function () {
+      partialEvaluator.xref = new XRefMock();
+      const task = new WorkerTask("test FreeText printing");
+      const freetextAnnotation = (
+        await AnnotationFactory.printNewAnnotations(partialEvaluator, task, [
+          {
+            annotationType: AnnotationEditorType.FREETEXT,
+            rect: [12, 34, 56, 78],
+            rotation: 0,
+            fontSize: 10,
+            color: [0, 0, 0],
+            value: "A",
+          },
+        ])
+      )[0];
+
+      const operatorList = await freetextAnnotation.getOperatorList(
+        partialEvaluator,
+        task,
+        RenderingIntentFlag.PRINT,
+        false,
+        null
+      );
+
+      expect(operatorList.fnArray.length).toEqual(16);
+      expect(operatorList.fnArray).toEqual([
+        OPS.beginAnnotation,
+        OPS.save,
+        OPS.constructPath,
+        OPS.clip,
+        OPS.endPath,
+        OPS.beginText,
+        OPS.setTextMatrix,
+        OPS.setCharSpacing,
+        OPS.setFillRGBColor,
+        OPS.dependency,
+        OPS.setFont,
+        OPS.moveText,
+        OPS.showText,
+        OPS.endText,
+        OPS.restore,
+        OPS.endAnnotation,
+      ]);
+    });
+  });
+
   describe("InkAnnotation", function () {
     it("should handle a single ink list", async function () {
       const inkDict = new Dict();
@@ -3911,6 +4171,126 @@ describe("annotation", function () {
         { x: 3, y: 3 },
         { x: 4, y: 5 },
       ]);
+    });
+
+    it("should create a new Ink annotation", async function () {
+      partialEvaluator.xref = new XRefMock();
+      const task = new WorkerTask("test Ink creation");
+      const data = await AnnotationFactory.saveNewAnnotations(
+        partialEvaluator,
+        task,
+        [
+          {
+            annotationType: AnnotationEditorType.INK,
+            rect: [12, 34, 56, 78],
+            rotation: 0,
+            thickness: 1,
+            color: [0, 0, 0],
+            paths: [
+              {
+                bezier: [
+                  10, 11, 12, 13, 14, 15, 16, 17, 22, 23, 24, 25, 26, 27,
+                ],
+                points: [1, 2, 3, 4, 5, 6, 7, 8],
+              },
+              {
+                bezier: [
+                  910, 911, 912, 913, 914, 915, 916, 917, 922, 923, 924, 925,
+                  926, 927,
+                ],
+                points: [91, 92, 93, 94, 95, 96, 97, 98],
+              },
+            ],
+          },
+        ]
+      );
+
+      const base = data.annotations[0].data.replace(/\(D:\d+\)/, "(date)");
+      expect(base).toEqual(
+        "1 0 obj\n" +
+          "<< /Type /Annot /Subtype /Ink /CreationDate (date) /Rect [12 34 56 78] " +
+          "/InkList [[1 2 3 4 5 6 7 8] [91 92 93 94 95 96 97 98]] /F 4 /Border [0 0 0] " +
+          "/Rotate 0 /AP << /N 2 0 R>>>>\n" +
+          "endobj\n"
+      );
+
+      const appearance = data.dependencies[0].data;
+      expect(appearance).toEqual(
+        "2 0 obj\n" +
+          "<< /FormType 1 /Subtype /Form /Type /XObject /BBox [0 0 44 44] /Length 129>> stream\n" +
+          "1 w 1 J 1 j\n" +
+          "0 G\n" +
+          "10 11 m\n" +
+          "12 13 14 15 16 17 c\n" +
+          "22 23 24 25 26 27 c\n" +
+          "S\n" +
+          "910 911 m\n" +
+          "912 913 914 915 916 917 c\n" +
+          "922 923 924 925 926 927 c\n" +
+          "S\n" +
+          "endstream\n" +
+          "\n" +
+          "endobj\n"
+      );
+    });
+
+    it("should render an added Ink annotation for printing", async function () {
+      partialEvaluator.xref = new XRefMock();
+      const task = new WorkerTask("test Ink printing");
+      const inkAnnotation = (
+        await AnnotationFactory.printNewAnnotations(partialEvaluator, task, [
+          {
+            annotationType: AnnotationEditorType.INK,
+            rect: [12, 34, 56, 78],
+            rotation: 0,
+            thickness: 3,
+            color: [0, 255, 0],
+            paths: [
+              {
+                bezier: [1, 2, 3, 4, 5, 6, 7, 8],
+                // Useless in the printing case.
+                points: [1, 2, 3, 4, 5, 6, 7, 8],
+              },
+            ],
+          },
+        ])
+      )[0];
+
+      const operatorList = await inkAnnotation.getOperatorList(
+        partialEvaluator,
+        task,
+        RenderingIntentFlag.PRINT,
+        false,
+        null
+      );
+
+      expect(operatorList.argsArray.length).toEqual(8);
+      expect(operatorList.fnArray).toEqual([
+        OPS.beginAnnotation,
+        OPS.setLineWidth,
+        OPS.setLineCap,
+        OPS.setLineJoin,
+        OPS.setStrokeRGBColor,
+        OPS.constructPath,
+        OPS.stroke,
+        OPS.endAnnotation,
+      ]);
+
+      // Linewidth.
+      expect(operatorList.argsArray[1]).toEqual([3]);
+      // LineCap.
+      expect(operatorList.argsArray[2]).toEqual([1]);
+      // LineJoin.
+      expect(operatorList.argsArray[3]).toEqual([1]);
+      // Color.
+      expect(operatorList.argsArray[4]).toEqual(
+        new Uint8ClampedArray([0, 255, 0])
+      );
+      // Path.
+      expect(operatorList.argsArray[5][0]).toEqual([OPS.moveTo, OPS.curveTo]);
+      expect(operatorList.argsArray[5][1]).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      // Min-max.
+      expect(operatorList.argsArray[5][2]).toEqual([1, 1, 2, 2]);
     });
   });
 

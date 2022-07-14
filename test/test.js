@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* eslint-disable no-var */
+/* eslint-disable no-var, unicorn/prefer-at */
 
 "use strict";
 
@@ -950,6 +950,7 @@ async function startBrowser(browserName, startUrl = "") {
       // Avoid popup when saving is done
       "browser.download.always_ask_before_handling_new_types": true,
       "browser.download.panel.shown": true,
+      "browser.download.alwaysOpenPanel": false,
       // Save file in output
       "browser.download.folderList": 2,
       "browser.download.dir": tempDir,
