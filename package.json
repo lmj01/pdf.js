@@ -68,6 +68,8 @@
   },
   "scripts": {
     "postinstall": "cross-env PUPPETEER_PRODUCT=firefox node node_modules/puppeteer/install.js",
+    "generic": "gulp generic",
+    "minified": "gulp minified",
     "watch": "http-server ./build -p 5800"
   },
   "repository": {

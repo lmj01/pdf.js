@@ -39,7 +39,7 @@
         if (window.frames[i].name == name) {
           const pdfViewer = window.frames[i].PDFViewerApplication;
           if (pdfViewer) {
-            console.log(pdfViewer);
+            console.log(name, pdfViewer, urlOrBuffer);
             pdfViewer.open(urlOrBuffer);
             pdfViewer.appConfig.secondaryToolbar.cursorHandToolButton.click();
             pdfViewer._contentDispositionFilename = 'mjddd.pdf';
