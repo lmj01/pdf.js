@@ -13,24 +13,36 @@
  * limitations under the License.
  */
 
+// eslint-disable-next-line max-len
+/** @typedef {import("./annotation_editor_layer.js").AnnotationEditorLayer} AnnotationEditorLayer */
+
 import {
   AnnotationEditorParamsType,
   AnnotationEditorType,
   assert,
   LINE_FACTOR,
+  Util,
 } from "../../shared/util.js";
+import { bindEvents, KeyboardManager } from "./tools.js";
 import { AnnotationEditor } from "./editor.js";
-import { bindEvents } from "./tools.js";
 
 /**
  * Basic text editor in order to create a FreeTex annotation.
  */
 class FreeTextEditor extends AnnotationEditor {
+  #boundEditorDivBlur = this.editorDivBlur.bind(this);
+
+  #boundEditorDivFocus = this.editorDivFocus.bind(this);
+
+  #boundEditorDivInput = this.editorDivInput.bind(this);
+
+  #boundEditorDivKeydown = this.editorDivKeydown.bind(this);
+
   #color;
 
   #content = "";
 
-  #contentHTML = "";
+  #editorDivId = `${this.id}-editor`;
 
   #hasAlreadyBeenCommitted = false;
 
@@ -46,6 +58,15 @@ class FreeTextEditor extends AnnotationEditor {
 
   static _defaultFontSize = 10;
 
+  static _keyboardManager = new KeyboardManager([
+    [
+      ["ctrl+Enter", "mac+meta+Enter", "Escape", "mac+Escape"],
+      FreeTextEditor.prototype.commitOrRemove,
+    ],
+  ]);
+
+  static _type = "freetext";
+
   constructor(params) {
     super({ ...params, name: "freeTextEditor" });
     this.#color =
@@ -56,7 +77,12 @@ class FreeTextEditor extends AnnotationEditor {
   }
 
   static initialize(l10n) {
-    this._l10nPromise = l10n.get("free_text_default_content");
+    this._l10nPromise = new Map(
+      ["free_text2_default_content", "editor_free_text2_aria_label"].map(
+        str => [str, l10n.get(str)]
+      )
+    );
+
     const style = getComputedStyle(document.documentElement);
 
     if (
@@ -75,26 +101,6 @@ class FreeTextEditor extends AnnotationEditor {
     this._internalPadding = parseFloat(
       style.getPropertyValue("--freetext-padding")
     );
-  }
-
-  /** @inheritdoc */
-  copy() {
-    const [width, height] = this.parent.viewportBaseDimensions;
-    const editor = new FreeTextEditor({
-      parent: this.parent,
-      id: this.parent.getNextId(),
-      x: this.x * width,
-      y: this.y * height,
-    });
-
-    editor.width = this.width;
-    editor.height = this.height;
-    editor.#color = this.#color;
-    editor.#fontSize = this.#fontSize;
-    editor.#content = this.#content;
-    editor.#contentHTML = this.#contentHTML;
-
-    return editor;
   }
 
   static updateDefaultParams(type, value) {
@@ -133,7 +139,6 @@ class FreeTextEditor extends AnnotationEditor {
     ];
   }
 
-  /** @inheritdoc */
   get propertiesToUpdate() {
     return [
       [AnnotationEditorParamsType.FREETEXT_SIZE, this.#fontSize],
@@ -201,6 +206,7 @@ class FreeTextEditor extends AnnotationEditor {
 
   /** @inheritdoc */
   rebuild() {
+    super.rebuild();
     if (this.div === null) {
       return;
     }
@@ -214,28 +220,61 @@ class FreeTextEditor extends AnnotationEditor {
 
   /** @inheritdoc */
   enableEditMode() {
+    if (this.isInEditMode()) {
+      return;
+    }
+
     this.parent.setEditingState(false);
     this.parent.updateToolbar(AnnotationEditorType.FREETEXT);
     super.enableEditMode();
     this.overlayDiv.classList.remove("enabled");
     this.editorDiv.contentEditable = true;
     this.div.draggable = false;
+    this.div.removeAttribute("aria-activedescendant");
+    this.editorDiv.addEventListener("keydown", this.#boundEditorDivKeydown);
+    this.editorDiv.addEventListener("focus", this.#boundEditorDivFocus);
+    this.editorDiv.addEventListener("blur", this.#boundEditorDivBlur);
+    this.editorDiv.addEventListener("input", this.#boundEditorDivInput);
   }
 
   /** @inheritdoc */
   disableEditMode() {
+    if (!this.isInEditMode()) {
+      return;
+    }
+
     this.parent.setEditingState(true);
     super.disableEditMode();
     this.overlayDiv.classList.add("enabled");
     this.editorDiv.contentEditable = false;
+    this.div.setAttribute("aria-activedescendant", this.#editorDivId);
     this.div.draggable = true;
+    this.editorDiv.removeEventListener("keydown", this.#boundEditorDivKeydown);
+    this.editorDiv.removeEventListener("focus", this.#boundEditorDivFocus);
+    this.editorDiv.removeEventListener("blur", this.#boundEditorDivBlur);
+    this.editorDiv.removeEventListener("input", this.#boundEditorDivInput);
+
+    // On Chrome, the focus is given to <body> when contentEditable is set to
+    // false, hence we focus the div.
+    this.div.focus();
+
+    // In case the blur callback hasn't been called.
+    this.isEditing = false;
+    this.parent.div.classList.add("freeTextEditing");
+  }
+
+  /** @inheritdoc */
+  focusin(event) {
+    super.focusin(event);
+    if (event.target !== this.editorDiv) {
+      this.editorDiv.focus();
+    }
   }
 
   /** @inheritdoc */
   onceAdded() {
     if (this.width) {
       // The editor was created in using ctrl+c.
-      this.div.focus();
       return;
     }
     this.enableEditMode();
@@ -244,12 +283,14 @@ class FreeTextEditor extends AnnotationEditor {
 
   /** @inheritdoc */
   isEmpty() {
-    return this.editorDiv.innerText.trim() === "";
+    return !this.editorDiv || this.editorDiv.innerText.trim() === "";
   }
 
   /** @inheritdoc */
   remove() {
+    this.isEditing = false;
     this.parent.setEditingState(true);
+    this.parent.div.classList.add("freeTextEditing");
     super.remove();
   }
 
@@ -263,8 +304,7 @@ class FreeTextEditor extends AnnotationEditor {
       return this.editorDiv.innerText;
     }
     const buffer = [];
-    for (let i = 0, ii = divs.length; i < ii; i++) {
-      const div = divs[i];
+    for (const div of divs) {
       const first = div.firstChild;
       if (first?.nodeName === "#text") {
         buffer.push(first.data);
@@ -288,6 +328,7 @@ class FreeTextEditor extends AnnotationEditor {
    * @returns {undefined}
    */
   commit() {
+    super.commit();
     if (!this.#hasAlreadyBeenCommitted) {
       // This editor has something and it's the first time
       // it's commited so we can add it in the undo/redo stack.
@@ -296,7 +337,6 @@ class FreeTextEditor extends AnnotationEditor {
     }
 
     this.disableEditMode();
-    this.#contentHTML = this.editorDiv.innerHTML;
     this.#content = this.#extractText().trimEnd();
 
     this.#setEditorDimensions();
@@ -316,6 +356,45 @@ class FreeTextEditor extends AnnotationEditor {
     this.editorDiv.focus();
   }
 
+  /**
+   * onkeydown callback.
+   * @param {KeyboardEvent} event
+   */
+  keydown(event) {
+    if (event.target === this.div && event.key === "Enter") {
+      this.enableEditMode();
+      this.editorDiv.focus();
+    }
+  }
+
+  editorDivKeydown(event) {
+    FreeTextEditor._keyboardManager.exec(this, event);
+  }
+
+  editorDivFocus(event) {
+    this.isEditing = true;
+  }
+
+  editorDivBlur(event) {
+    this.isEditing = false;
+  }
+
+  editorDivInput(event) {
+    this.parent.div.classList.toggle("freeTextEditing", this.isEmpty());
+  }
+
+  /** @inheritdoc */
+  disableEditing() {
+    this.editorDiv.setAttribute("role", "comment");
+    this.editorDiv.removeAttribute("aria-multiline");
+  }
+
+  /** @inheritdoc */
+  enableEditing() {
+    this.editorDiv.setAttribute("role", "textbox");
+    this.editorDiv.setAttribute("aria-multiline", true);
+  }
+
   /** @inheritdoc */
   render() {
     if (this.div) {
@@ -330,12 +409,18 @@ class FreeTextEditor extends AnnotationEditor {
 
     super.render();
     this.editorDiv = document.createElement("div");
-    this.editorDiv.tabIndex = 0;
     this.editorDiv.className = "internal";
 
-    FreeTextEditor._l10nPromise.then(msg =>
-      this.editorDiv.setAttribute("default-content", msg)
-    );
+    this.editorDiv.setAttribute("id", this.#editorDivId);
+    this.enableEditing();
+
+    FreeTextEditor._l10nPromise
+      .get("editor_free_text2_aria_label")
+      .then(msg => this.editorDiv?.setAttribute("aria-label", msg));
+
+    FreeTextEditor._l10nPromise
+      .get("free_text2_default_content")
+      .then(msg => this.editorDiv?.setAttribute("default-content", msg));
     this.editorDiv.contentEditable = true;
 
     const { style } = this.editorDiv;
@@ -351,7 +436,7 @@ class FreeTextEditor extends AnnotationEditor {
     // TODO: implement paste callback.
     // The goal is to sanitize and have something suitable for this
     // editor.
-    bindEvents(this, this.div, ["dblclick"]);
+    bindEvents(this, this.div, ["dblclick", "keydown"]);
 
     if (this.width) {
       // This editor was created in using copy (ctrl+c).
@@ -362,12 +447,38 @@ class FreeTextEditor extends AnnotationEditor {
         this.width * parentWidth,
         this.height * parentHeight
       );
-      // eslint-disable-next-line no-unsanitized/property
-      this.editorDiv.innerHTML = this.#contentHTML;
+
+      for (const line of this.#content.split("\n")) {
+        const div = document.createElement("div");
+        div.append(
+          line ? document.createTextNode(line) : document.createElement("br")
+        );
+        this.editorDiv.append(div);
+      }
+
       this.div.draggable = true;
+      this.editorDiv.contentEditable = false;
+    } else {
+      this.div.draggable = false;
+      this.editorDiv.contentEditable = true;
     }
 
     return this.div;
+  }
+
+  get contentDiv() {
+    return this.editorDiv;
+  }
+
+  /** @inheritdoc */
+  static deserialize(data, parent) {
+    const editor = super.deserialize(data, parent);
+
+    editor.#fontSize = data.fontSize;
+    editor.#color = Util.makeHexColor(...data.color);
+    editor.#content = data.value;
+
+    return editor;
   }
 
   /** @inheritdoc */

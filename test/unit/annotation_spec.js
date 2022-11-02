@@ -1454,7 +1454,7 @@ describe("annotation", function () {
       );
       expect(data.annotationType).toEqual(AnnotationType.WIDGET);
       expect(data.textAlignment).toEqual(null);
-      expect(data.maxLen).toEqual(null);
+      expect(data.maxLen).toEqual(0);
       expect(data.readOnly).toEqual(false);
       expect(data.hidden).toEqual(false);
       expect(data.multiLine).toEqual(false);
@@ -1478,7 +1478,7 @@ describe("annotation", function () {
       );
       expect(data.annotationType).toEqual(AnnotationType.WIDGET);
       expect(data.textAlignment).toEqual(null);
-      expect(data.maxLen).toEqual(null);
+      expect(data.maxLen).toEqual(0);
       expect(data.readOnly).toEqual(false);
       expect(data.hidden).toEqual(false);
       expect(data.multiLine).toEqual(false);
@@ -1682,29 +1682,27 @@ describe("annotation", function () {
       );
       const annotationStorage = new Map();
 
-      const operatorList = await annotation.getOperatorList(
+      const { opList } = await annotation.getOperatorList(
         partialEvaluator,
         task,
         RenderingIntentFlag.PRINT,
         false,
         annotationStorage
       );
-      expect(operatorList.argsArray.length).toEqual(3);
-      expect(operatorList.fnArray).toEqual([
+      expect(opList.argsArray.length).toEqual(3);
+      expect(opList.fnArray).toEqual([
         OPS.beginAnnotation,
         OPS.setFillRGBColor,
         OPS.endAnnotation,
       ]);
-      expect(operatorList.argsArray[0]).toEqual([
+      expect(opList.argsArray[0]).toEqual([
         "271R",
         [0, 0, 32, 10],
         [32, 0, 0, 10, 0, 0],
         [1, 0, 0, 1, 0, 0],
         false,
       ]);
-      expect(operatorList.argsArray[1]).toEqual(
-        new Uint8ClampedArray([26, 51, 76])
-      );
+      expect(opList.argsArray[1]).toEqual(new Uint8ClampedArray([26, 51, 76]));
     });
 
     it("should render auto-sized text for printing", async function () {
@@ -2369,29 +2367,29 @@ describe("annotation", function () {
       const annotationStorage = new Map();
       annotationStorage.set(annotation.data.id, { value: true });
 
-      const operatorList = await annotation.getOperatorList(
+      const { opList } = await annotation.getOperatorList(
         checkboxEvaluator,
         task,
         RenderingIntentFlag.PRINT,
         false,
         annotationStorage
       );
-      expect(operatorList.argsArray.length).toEqual(5);
-      expect(operatorList.fnArray).toEqual([
+      expect(opList.argsArray.length).toEqual(5);
+      expect(opList.fnArray).toEqual([
         OPS.beginAnnotation,
         OPS.dependency,
         OPS.setFont,
         OPS.showText,
         OPS.endAnnotation,
       ]);
-      expect(operatorList.argsArray[0]).toEqual([
+      expect(opList.argsArray[0]).toEqual([
         "124R",
         [0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0],
         [1, 0, 0, 1, 0, 0],
         false,
       ]);
-      expect(operatorList.argsArray[3][0][0].unicode).toEqual("4");
+      expect(opList.argsArray[3][0][0].unicode).toEqual("4");
     });
 
     it("should render checkboxes for printing", async function () {
@@ -2430,55 +2428,51 @@ describe("annotation", function () {
       const annotationStorage = new Map();
       annotationStorage.set(annotation.data.id, { value: true });
 
-      let operatorList = await annotation.getOperatorList(
+      const { opList: opList1 } = await annotation.getOperatorList(
         partialEvaluator,
         task,
         RenderingIntentFlag.PRINT,
         false,
         annotationStorage
       );
-      expect(operatorList.argsArray.length).toEqual(3);
-      expect(operatorList.fnArray).toEqual([
+      expect(opList1.argsArray.length).toEqual(3);
+      expect(opList1.fnArray).toEqual([
         OPS.beginAnnotation,
         OPS.setFillRGBColor,
         OPS.endAnnotation,
       ]);
-      expect(operatorList.argsArray[0]).toEqual([
+      expect(opList1.argsArray[0]).toEqual([
         "124R",
         [0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0],
         [1, 0, 0, 1, 0, 0],
         false,
       ]);
-      expect(operatorList.argsArray[1]).toEqual(
-        new Uint8ClampedArray([26, 51, 76])
-      );
+      expect(opList1.argsArray[1]).toEqual(new Uint8ClampedArray([26, 51, 76]));
 
       annotationStorage.set(annotation.data.id, { value: false });
 
-      operatorList = await annotation.getOperatorList(
+      const { opList: opList2 } = await annotation.getOperatorList(
         partialEvaluator,
         task,
         RenderingIntentFlag.PRINT,
         false,
         annotationStorage
       );
-      expect(operatorList.argsArray.length).toEqual(3);
-      expect(operatorList.fnArray).toEqual([
+      expect(opList2.argsArray.length).toEqual(3);
+      expect(opList2.fnArray).toEqual([
         OPS.beginAnnotation,
         OPS.setFillRGBColor,
         OPS.endAnnotation,
       ]);
-      expect(operatorList.argsArray[0]).toEqual([
+      expect(opList2.argsArray[0]).toEqual([
         "124R",
         [0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0],
         [1, 0, 0, 1, 0, 0],
         false,
       ]);
-      expect(operatorList.argsArray[1]).toEqual(
-        new Uint8ClampedArray([76, 51, 26])
-      );
+      expect(opList2.argsArray[1]).toEqual(new Uint8ClampedArray([76, 51, 26]));
     });
 
     it("should render checkboxes for printing twice", async function () {
@@ -2520,27 +2514,27 @@ describe("annotation", function () {
       for (let i = 0; i < 2; i++) {
         annotationStorage.set(annotation.data.id, { value: true });
 
-        const operatorList = await annotation.getOperatorList(
+        const { opList } = await annotation.getOperatorList(
           partialEvaluator,
           task,
           RenderingIntentFlag.PRINT,
           false,
           annotationStorage
         );
-        expect(operatorList.argsArray.length).toEqual(3);
-        expect(operatorList.fnArray).toEqual([
+        expect(opList.argsArray.length).toEqual(3);
+        expect(opList.fnArray).toEqual([
           OPS.beginAnnotation,
           OPS.setFillRGBColor,
           OPS.endAnnotation,
         ]);
-        expect(operatorList.argsArray[0]).toEqual([
+        expect(opList.argsArray[0]).toEqual([
           "1249R",
           [0, 0, 0, 0],
           [0, 0, 0, 0, 0, 0],
           [1, 0, 0, 1, 0, 0],
           false,
         ]);
-        expect(operatorList.argsArray[1]).toEqual(
+        expect(opList.argsArray[1]).toEqual(
           new Uint8ClampedArray([26, 51, 76])
         );
       }
@@ -2582,29 +2576,27 @@ describe("annotation", function () {
       );
       const annotationStorage = new Map();
 
-      const operatorList = await annotation.getOperatorList(
+      const { opList } = await annotation.getOperatorList(
         partialEvaluator,
         task,
         RenderingIntentFlag.PRINT,
         false,
         annotationStorage
       );
-      expect(operatorList.argsArray.length).toEqual(3);
-      expect(operatorList.fnArray).toEqual([
+      expect(opList.argsArray.length).toEqual(3);
+      expect(opList.fnArray).toEqual([
         OPS.beginAnnotation,
         OPS.setFillRGBColor,
         OPS.endAnnotation,
       ]);
-      expect(operatorList.argsArray[0]).toEqual([
+      expect(opList.argsArray[0]).toEqual([
         "124R",
         [0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0],
         [1, 0, 0, 1, 0, 0],
         false,
       ]);
-      expect(operatorList.argsArray[1]).toEqual(
-        new Uint8ClampedArray([26, 51, 76])
-      );
+      expect(opList.argsArray[1]).toEqual(new Uint8ClampedArray([26, 51, 76]));
     });
 
     it("should save checkboxes", async function () {
@@ -2838,55 +2830,51 @@ describe("annotation", function () {
       const annotationStorage = new Map();
       annotationStorage.set(annotation.data.id, { value: true });
 
-      let operatorList = await annotation.getOperatorList(
+      const { opList: opList1 } = await annotation.getOperatorList(
         partialEvaluator,
         task,
         RenderingIntentFlag.PRINT,
         false,
         annotationStorage
       );
-      expect(operatorList.argsArray.length).toEqual(3);
-      expect(operatorList.fnArray).toEqual([
+      expect(opList1.argsArray.length).toEqual(3);
+      expect(opList1.fnArray).toEqual([
         OPS.beginAnnotation,
         OPS.setFillRGBColor,
         OPS.endAnnotation,
       ]);
-      expect(operatorList.argsArray[0]).toEqual([
+      expect(opList1.argsArray[0]).toEqual([
         "124R",
         [0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0],
         [1, 0, 0, 1, 0, 0],
         false,
       ]);
-      expect(operatorList.argsArray[1]).toEqual(
-        new Uint8ClampedArray([26, 51, 76])
-      );
+      expect(opList1.argsArray[1]).toEqual(new Uint8ClampedArray([26, 51, 76]));
 
       annotationStorage.set(annotation.data.id, { value: false });
 
-      operatorList = await annotation.getOperatorList(
+      const { opList: opList2 } = await annotation.getOperatorList(
         partialEvaluator,
         task,
         RenderingIntentFlag.PRINT,
         false,
         annotationStorage
       );
-      expect(operatorList.argsArray.length).toEqual(3);
-      expect(operatorList.fnArray).toEqual([
+      expect(opList2.argsArray.length).toEqual(3);
+      expect(opList2.fnArray).toEqual([
         OPS.beginAnnotation,
         OPS.setFillRGBColor,
         OPS.endAnnotation,
       ]);
-      expect(operatorList.argsArray[0]).toEqual([
+      expect(opList2.argsArray[0]).toEqual([
         "124R",
         [0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0],
         [1, 0, 0, 1, 0, 0],
         false,
       ]);
-      expect(operatorList.argsArray[1]).toEqual(
-        new Uint8ClampedArray([76, 51, 26])
-      );
+      expect(opList2.argsArray[1]).toEqual(new Uint8ClampedArray([76, 51, 26]));
     });
 
     it("should render radio buttons for printing using normal appearance", async function () {
@@ -2926,29 +2914,27 @@ describe("annotation", function () {
       );
       const annotationStorage = new Map();
 
-      const operatorList = await annotation.getOperatorList(
+      const { opList } = await annotation.getOperatorList(
         partialEvaluator,
         task,
         RenderingIntentFlag.PRINT,
         false,
         annotationStorage
       );
-      expect(operatorList.argsArray.length).toEqual(3);
-      expect(operatorList.fnArray).toEqual([
+      expect(opList.argsArray.length).toEqual(3);
+      expect(opList.fnArray).toEqual([
         OPS.beginAnnotation,
         OPS.setFillRGBColor,
         OPS.endAnnotation,
       ]);
-      expect(operatorList.argsArray[0]).toEqual([
+      expect(opList.argsArray[0]).toEqual([
         "124R",
         [0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0],
         [1, 0, 0, 1, 0, 0],
         false,
       ]);
-      expect(operatorList.argsArray[1]).toEqual(
-        new Uint8ClampedArray([76, 51, 26])
-      );
+      expect(opList.argsArray[1]).toEqual(new Uint8ClampedArray([76, 51, 26]));
     });
 
     it("should save radio buttons", async function () {
@@ -4087,7 +4073,7 @@ describe("annotation", function () {
         ])
       )[0];
 
-      const operatorList = await freetextAnnotation.getOperatorList(
+      const { opList } = await freetextAnnotation.getOperatorList(
         partialEvaluator,
         task,
         RenderingIntentFlag.PRINT,
@@ -4095,8 +4081,8 @@ describe("annotation", function () {
         null
       );
 
-      expect(operatorList.fnArray.length).toEqual(16);
-      expect(operatorList.fnArray).toEqual([
+      expect(opList.fnArray.length).toEqual(16);
+      expect(opList.fnArray).toEqual([
         OPS.beginAnnotation,
         OPS.save,
         OPS.constructPath,
@@ -4113,6 +4099,35 @@ describe("annotation", function () {
         OPS.endText,
         OPS.restore,
         OPS.endAnnotation,
+      ]);
+    });
+
+    it("should extract the text from a FreeText annotation", async function () {
+      partialEvaluator.xref = new XRefMock();
+      const task = new WorkerTask("test FreeText text extraction");
+      const freetextAnnotation = (
+        await AnnotationFactory.printNewAnnotations(partialEvaluator, task, [
+          {
+            annotationType: AnnotationEditorType.FREETEXT,
+            rect: [12, 34, 56, 78],
+            rotation: 0,
+            fontSize: 10,
+            color: [0, 0, 0],
+            value: "Hello PDF.js\nWorld !",
+          },
+        ])
+      )[0];
+
+      await freetextAnnotation.extractTextContent(partialEvaluator, task, [
+        -Infinity,
+        -Infinity,
+        Infinity,
+        Infinity,
+      ]);
+
+      expect(freetextAnnotation.data.textContent).toEqual([
+        "Hello PDF.js",
+        "World !",
       ]);
     });
   });
@@ -4185,6 +4200,7 @@ describe("annotation", function () {
             rect: [12, 34, 56, 78],
             rotation: 0,
             thickness: 1,
+            opacity: 1,
             color: [0, 0, 0],
             paths: [
               {
@@ -4234,6 +4250,70 @@ describe("annotation", function () {
       );
     });
 
+    it("should create a new Ink annotation with some transparency", async function () {
+      partialEvaluator.xref = new XRefMock();
+      const task = new WorkerTask("test Ink creation");
+      const data = await AnnotationFactory.saveNewAnnotations(
+        partialEvaluator,
+        task,
+        [
+          {
+            annotationType: AnnotationEditorType.INK,
+            rect: [12, 34, 56, 78],
+            rotation: 0,
+            thickness: 1,
+            opacity: 0.12,
+            color: [0, 0, 0],
+            paths: [
+              {
+                bezier: [
+                  10, 11, 12, 13, 14, 15, 16, 17, 22, 23, 24, 25, 26, 27,
+                ],
+                points: [1, 2, 3, 4, 5, 6, 7, 8],
+              },
+              {
+                bezier: [
+                  910, 911, 912, 913, 914, 915, 916, 917, 922, 923, 924, 925,
+                  926, 927,
+                ],
+                points: [91, 92, 93, 94, 95, 96, 97, 98],
+              },
+            ],
+          },
+        ]
+      );
+
+      const base = data.annotations[0].data.replace(/\(D:\d+\)/, "(date)");
+      expect(base).toEqual(
+        "1 0 obj\n" +
+          "<< /Type /Annot /Subtype /Ink /CreationDate (date) /Rect [12 34 56 78] " +
+          "/InkList [[1 2 3 4 5 6 7 8] [91 92 93 94 95 96 97 98]] /F 4 /Border [0 0 0] " +
+          "/Rotate 0 /AP << /N 2 0 R>>>>\n" +
+          "endobj\n"
+      );
+
+      const appearance = data.dependencies[0].data;
+      expect(appearance).toEqual(
+        "2 0 obj\n" +
+          "<< /FormType 1 /Subtype /Form /Type /XObject /BBox [0 0 44 44] /Length 136 /Resources " +
+          "<< /ExtGState << /R0 << /CA 0.12 /Type /ExtGState>>>>>>>> stream\n" +
+          "1 w 1 J 1 j\n" +
+          "0 G\n" +
+          "/R0 gs\n" +
+          "10 11 m\n" +
+          "12 13 14 15 16 17 c\n" +
+          "22 23 24 25 26 27 c\n" +
+          "S\n" +
+          "910 911 m\n" +
+          "912 913 914 915 916 917 c\n" +
+          "922 923 924 925 926 927 c\n" +
+          "S\n" +
+          "endstream\n" +
+          "\n" +
+          "endobj\n"
+      );
+    });
+
     it("should render an added Ink annotation for printing", async function () {
       partialEvaluator.xref = new XRefMock();
       const task = new WorkerTask("test Ink printing");
@@ -4244,6 +4324,7 @@ describe("annotation", function () {
             rect: [12, 34, 56, 78],
             rotation: 0,
             thickness: 3,
+            opacity: 1,
             color: [0, 255, 0],
             paths: [
               {
@@ -4256,7 +4337,7 @@ describe("annotation", function () {
         ])
       )[0];
 
-      const operatorList = await inkAnnotation.getOperatorList(
+      const { opList } = await inkAnnotation.getOperatorList(
         partialEvaluator,
         task,
         RenderingIntentFlag.PRINT,
@@ -4264,8 +4345,8 @@ describe("annotation", function () {
         null
       );
 
-      expect(operatorList.argsArray.length).toEqual(8);
-      expect(operatorList.fnArray).toEqual([
+      expect(opList.argsArray.length).toEqual(8);
+      expect(opList.fnArray).toEqual([
         OPS.beginAnnotation,
         OPS.setLineWidth,
         OPS.setLineCap,
@@ -4277,20 +4358,18 @@ describe("annotation", function () {
       ]);
 
       // Linewidth.
-      expect(operatorList.argsArray[1]).toEqual([3]);
+      expect(opList.argsArray[1]).toEqual([3]);
       // LineCap.
-      expect(operatorList.argsArray[2]).toEqual([1]);
+      expect(opList.argsArray[2]).toEqual([1]);
       // LineJoin.
-      expect(operatorList.argsArray[3]).toEqual([1]);
+      expect(opList.argsArray[3]).toEqual([1]);
       // Color.
-      expect(operatorList.argsArray[4]).toEqual(
-        new Uint8ClampedArray([0, 255, 0])
-      );
+      expect(opList.argsArray[4]).toEqual(new Uint8ClampedArray([0, 255, 0]));
       // Path.
-      expect(operatorList.argsArray[5][0]).toEqual([OPS.moveTo, OPS.curveTo]);
-      expect(operatorList.argsArray[5][1]).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      expect(opList.argsArray[5][0]).toEqual([OPS.moveTo, OPS.curveTo]);
+      expect(opList.argsArray[5][1]).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
       // Min-max.
-      expect(operatorList.argsArray[5][2]).toEqual([1, 1, 2, 2]);
+      expect(opList.argsArray[5][2]).toEqual([1, 1, 2, 2]);
     });
   });
 

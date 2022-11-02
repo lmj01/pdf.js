@@ -23,6 +23,8 @@ import { BaseException, stringToBytes, Util, warn } from "../shared/util.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+const AnnotationPrefix = "pdfjs_internal_id_";
+
 class PixelsPerInch {
   static CSS = 96.0;
 
@@ -585,6 +587,14 @@ function getRGB(color) {
       .map(x => parseInt(x));
   }
 
+  if (color.startsWith("rgba(")) {
+    return color
+      .slice(/* "rgba(".length */ 5, -1) // Strip out "rgba(" and ")".
+      .split(",")
+      .map(x => parseInt(x))
+      .slice(0, 3);
+  }
+
   warn(`Not a valid color format: "${color}"`);
   return [0, 0, 0];
 }
@@ -601,13 +611,26 @@ function getColorValues(colors) {
   span.remove();
 }
 
+function getCurrentTransform(ctx) {
+  const { a, b, c, d, e, f } = ctx.getTransform();
+  return [a, b, c, d, e, f];
+}
+
+function getCurrentTransformInverse(ctx) {
+  const { a, b, c, d, e, f } = ctx.getTransform().invertSelf();
+  return [a, b, c, d, e, f];
+}
+
 export {
+  AnnotationPrefix,
   deprecated,
   DOMCanvasFactory,
   DOMCMapReaderFactory,
   DOMStandardFontDataFactory,
   DOMSVGFactory,
   getColorValues,
+  getCurrentTransform,
+  getCurrentTransformInverse,
   getFilenameFromUrl,
   getPdfFilenameFromUrl,
   getRGB,

@@ -73,3 +73,30 @@ function getComputedStyleSelector(id) {
   return `getComputedStyle(${getQuerySelector(id)})`;
 }
 exports.getComputedStyleSelector = getComputedStyleSelector;
+exports.getEditorSelector = n => `#pdfjs_internal_editor_${n}`;
+
+function getSelectedEditors(page) {
+  return page.evaluate(() => {
+    const elements = document.querySelectorAll(".selectedEditor");
+    const results = [];
+    for (const { id } of elements) {
+      results.push(parseInt(id.split("_").at(-1)));
+    }
+    results.sort();
+    return results;
+  });
+}
+exports.getSelectedEditors = getSelectedEditors;
+
+async function waitForEvent(page, eventName, timeout = 30000) {
+  await Promise.race([
+    // add event listener and wait for event to fire before returning
+    page.evaluate(name => {
+      return new Promise(resolve => {
+        document.addEventListener(name, resolve, { once: true });
+      });
+    }, eventName),
+    page.waitForTimeout(timeout),
+  ]);
+}
+exports.waitForEvent = waitForEvent;

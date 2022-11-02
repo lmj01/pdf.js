@@ -26,6 +26,8 @@ import {
 import { Dict, isName, Ref, RefSet } from "./primitives.js";
 import { BaseStream } from "./base_stream.js";
 
+const PDF_VERSION_REGEXP = /^[1-9]\.\d$/;
+
 function getLookupTableFactory(initializer) {
   let lookup;
   return function () {
@@ -339,7 +341,7 @@ function _collectJS(entry, xref, list, parents) {
       } else if (typeof js === "string") {
         code = js;
       }
-      code = code && stringToPDFString(code);
+      code = code && stringToPDFString(code).replace(/\u0000/g, "");
       if (code) {
         list.push(code);
       }
@@ -585,6 +587,7 @@ export {
   numberToString,
   ParserEOFException,
   parseXFAPath,
+  PDF_VERSION_REGEXP,
   readInt8,
   readUint16,
   readUint32,

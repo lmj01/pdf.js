@@ -30,6 +30,8 @@
 /** @typedef {import("./interfaces").IPDFTextLayerFactory} IPDFTextLayerFactory */
 /** @typedef {import("./interfaces").IPDFXfaLayerFactory} IPDFXfaLayerFactory */
 /** @typedef {import("./text_highlighter").TextHighlighter} TextHighlighter */
+// eslint-disable-next-line max-len
+/** @typedef {import("./text_accessibility.js").TextAccessibilityManager} TextAccessibilityManager */
 
 import { AnnotationEditorLayerBuilder } from "./annotation_editor_layer_builder.js";
 import { AnnotationLayerBuilder } from "./annotation_layer_builder.js";
@@ -44,23 +46,30 @@ import { XfaLayerBuilder } from "./xfa_layer_builder.js";
  */
 class DefaultAnnotationLayerFactory {
   /**
-   * @param {HTMLDivElement} pageDiv
-   * @param {PDFPageProxy} pdfPage
-   * @param {AnnotationStorage} [annotationStorage]
-   * @param {string} [imageResourcesPath] - Path for image resources, mainly
+   * @typedef {Object} CreateAnnotationLayerBuilderParameters
+   * @property {HTMLDivElement} pageDiv
+   * @property {PDFPageProxy} pdfPage
+   * @property {AnnotationStorage} [annotationStorage] - Storage for annotation
+   *   data in forms.
+   * @property {string} [imageResourcesPath] - Path for image resources, mainly
    *   for annotation icons. Include trailing slash.
-   * @param {boolean} renderForms
-   * @param {IL10n} l10n
-   * @param {boolean} [enableScripting]
-   * @param {Promise<boolean>} [hasJSActionsPromise]
-   * @param {Object} [mouseState]
-   * @param {Promise<Object<string, Array<Object>> | null>}
+   * @property {boolean} renderForms
+   * @property {IL10n} l10n
+   * @property {boolean} [enableScripting]
+   * @property {Promise<boolean>} [hasJSActionsPromise]
+   * @property {Object} [mouseState]
+   * @property {Promise<Object<string, Array<Object>> | null>}
    *   [fieldObjectsPromise]
-   * @param {Map<string, HTMLCanvasElement>} [annotationCanvasMap] - Map some
+   * @property {Map<string, HTMLCanvasElement>} [annotationCanvasMap] - Map some
    *   annotation ids with canvases used to render them.
+   * @property {TextAccessibilityManager} [accessibilityManager]
+   */
+
+  /**
+   * @param {CreateAnnotationLayerBuilderParameters}
    * @returns {AnnotationLayerBuilder}
    */
-  createAnnotationLayerBuilder(
+  createAnnotationLayerBuilder({
     pageDiv,
     pdfPage,
     annotationStorage = null,
@@ -71,8 +80,9 @@ class DefaultAnnotationLayerFactory {
     hasJSActionsPromise = null,
     mouseState = null,
     fieldObjectsPromise = null,
-    annotationCanvasMap = null
-  ) {
+    annotationCanvasMap = null,
+    accessibilityManager = null,
+  }) {
     return new AnnotationLayerBuilder({
       pageDiv,
       pdfPage,
@@ -86,6 +96,7 @@ class DefaultAnnotationLayerFactory {
       fieldObjectsPromise,
       mouseState,
       annotationCanvasMap,
+      accessibilityManager,
     });
   }
 }
@@ -95,21 +106,33 @@ class DefaultAnnotationLayerFactory {
  */
 class DefaultAnnotationEditorLayerFactory {
   /**
-   * @param {HTMLDivElement} pageDiv
-   * @param {PDFPageProxy} pdfPage
-   * @param {IL10n} l10n
-   * @param {AnnotationStorage} [annotationStorage]
+   * @typedef {Object} CreateAnnotationEditorLayerBuilderParameters
+   * @property {AnnotationEditorUIManager} [uiManager]
+   * @property {HTMLDivElement} pageDiv
+   * @property {PDFPageProxy} pdfPage
+   * @property {IL10n} l10n
+   * @property {AnnotationStorage} [annotationStorage] - Storage for annotation
+   * @property {TextAccessibilityManager} [accessibilityManager]
+   *   data in forms.
+   */
+
+  /**
+   * @param {CreateAnnotationEditorLayerBuilderParameters}
    * @returns {AnnotationEditorLayerBuilder}
    */
-  createAnnotationEditorLayerBuilder(
+  createAnnotationEditorLayerBuilder({
+    uiManager = null,
     pageDiv,
     pdfPage,
+    accessibilityManager = null,
     l10n,
-    annotationStorage = null
-  ) {
+    annotationStorage = null,
+  }) {
     return new AnnotationEditorLayerBuilder({
+      uiManager,
       pageDiv,
       pdfPage,
+      accessibilityManager,
       l10n,
       annotationStorage,
     });
@@ -121,10 +144,15 @@ class DefaultAnnotationEditorLayerFactory {
  */
 class DefaultStructTreeLayerFactory {
   /**
-   * @param {PDFPageProxy} pdfPage
+   * @typedef {Object} CreateStructTreeLayerBuilderParameters
+   * @property {PDFPageProxy} pdfPage
+   */
+
+  /**
+   * @param {CreateStructTreeLayerBuilderParameters}
    * @returns {StructTreeLayerBuilder}
    */
-  createStructTreeLayerBuilder(pdfPage) {
+  createStructTreeLayerBuilder({ pdfPage }) {
     return new StructTreeLayerBuilder({
       pdfPage,
     });
@@ -136,29 +164,34 @@ class DefaultStructTreeLayerFactory {
  */
 class DefaultTextLayerFactory {
   /**
-   * @param {HTMLDivElement} textLayerDiv
-   * @param {number} pageIndex
-   * @param {PageViewport} viewport
-   * @param {boolean} enhanceTextSelection
-   * @param {EventBus} eventBus
-   * @param {TextHighlighter} highlighter
+   * @typedef {Object} CreateTextLayerBuilderParameters
+   * @property {HTMLDivElement} textLayerDiv
+   * @property {number} pageIndex
+   * @property {PageViewport} viewport
+   * @property {EventBus} eventBus
+   * @property {TextHighlighter} highlighter
+   * @property {TextAccessibilityManager} [accessibilityManager]
+   */
+
+  /**
+   * @param {CreateTextLayerBuilderParameters}
    * @returns {TextLayerBuilder}
    */
-  createTextLayerBuilder(
+  createTextLayerBuilder({
     textLayerDiv,
     pageIndex,
     viewport,
-    enhanceTextSelection = false,
     eventBus,
-    highlighter
-  ) {
+    highlighter,
+    accessibilityManager = null,
+  }) {
     return new TextLayerBuilder({
       textLayerDiv,
       pageIndex,
       viewport,
-      enhanceTextSelection,
       eventBus,
       highlighter,
+      accessibilityManager,
     });
   }
 }
@@ -168,23 +201,23 @@ class DefaultTextLayerFactory {
  */
 class DefaultXfaLayerFactory {
   /**
-   * @param {HTMLDivElement} pageDiv
-   * @param {PDFPageProxy} pdfPage
-   * @param {AnnotationStorage} [annotationStorage]
-   * @param {Object} [xfaHtml]
+   * @typedef {Object} CreateXfaLayerBuilderParameters
+   * @property {HTMLDivElement} pageDiv
+   * @property {PDFPageProxy} pdfPage
+   * @property {AnnotationStorage} [annotationStorage] - Storage for annotation
+   *   data in forms.
    */
-  createXfaLayerBuilder(
-    pageDiv,
-    pdfPage,
-    annotationStorage = null,
-    xfaHtml = null
-  ) {
+
+  /**
+   * @param {CreateXfaLayerBuilderParameters}
+   * @returns {XfaLayerBuilder}
+   */
+  createXfaLayerBuilder({ pageDiv, pdfPage, annotationStorage = null }) {
     return new XfaLayerBuilder({
       pageDiv,
       pdfPage,
       annotationStorage,
       linkService: new SimpleLinkService(),
-      xfaHtml,
     });
   }
 }

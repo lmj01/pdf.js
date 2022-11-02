@@ -53,13 +53,6 @@
        "rounds": 1,
        "type": "text"
     },
-    {  "id": "tracemonkey-text-enhance",
-       "file": "pdfs/tracemonkey.pdf",
-       "md5": "9a192d8b1a7dc652a19835f6f08098bd",
-       "rounds": 1,
-       "enhance": true,
-       "type": "text"
-    },
     {  "id": "tracemonkey-forced-colors-eq",
       "file": "pdfs/tracemonkey.pdf",
       "md5": "9a192d8b1a7dc652a19835f6f08098bd",
@@ -147,6 +140,22 @@
     {  "id": "issue14269",
        "file": "pdfs/issue14269.pdf",
        "md5": "f34abf77a418f54e13fbcd03b063432e",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "eq"
+    },
+    {  "id": "issue15220",
+       "file": "pdfs/issue15220.pdf",
+       "md5": "0864a9e3860c0cb5e98b5eb23287fba4",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "eq"
+    },
+    {  "id": "issue15292",
+       "file": "pdfs/issue15292.pdf",
+       "md5": "24297e183bf16cdd684dac8902e9fbe6",
        "rounds": 1,
        "link": true,
        "lastPage": 1,
@@ -275,6 +284,13 @@
     {  "id": "bug1753983",
        "file": "pdfs/bug1753983.pdf",
        "md5": "432be86262e5071176c49713ce458031",
+       "rounds": 1,
+       "link": true,
+       "type": "eq"
+    },
+    {  "id": "issue15604",
+       "file": "pdfs/issue15604.pdf",
+       "md5": "505040e5634434ae97118a4c39bf27e5",
        "rounds": 1,
        "link": true,
        "type": "eq"
@@ -429,6 +445,12 @@
        "file": "pdfs/bug859204.pdf",
        "md5": "ac1ea1dbfa6ac9d5b13167483049af0b",
        "link": false,
+       "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue15441",
+       "file": "pdfs/issue15441.pdf",
+       "md5": "4a30ea4c8d32fc7dee2a26f78b24966e",
        "rounds": 1,
        "type": "eq"
     },
@@ -588,26 +610,16 @@
        "lastPage": 4,
        "type": "text"
     },
-    {  "id": "taro-text-enhance",
-       "file": "pdfs/TaroUTR50SortedList112.pdf",
-       "md5": "ce63eab622ff473a43f8a8de85ef8a46",
-       "link":true,
+    {  "id": "issue15594",
+       "file": "pdfs/issue15594_reduced.pdf",
+       "md5": "6820808944a2a84c72d00a0e1476227b",
        "rounds": 1,
-       "lastPage": 4,
-       "enhance": true,
-       "type": "text"
+       "type": "eq"
     },
     {  "id": "rotated-text",
        "file": "pdfs/rotated.pdf",
        "md5": "aed187f53e969ccdcbab0bb4c59f9e46",
        "rounds": 1,
-       "type": "text"
-    },
-    {  "id": "rotated-text-enhance",
-       "file": "pdfs/rotated.pdf",
-       "md5": "aed187f53e969ccdcbab0bb4c59f9e46",
-       "rounds": 1,
-       "enhance": true,
        "type": "text"
     },
     {
@@ -645,6 +657,29 @@
        "file": "pdfs/issue12798_page1_reduced.pdf",
        "md5": "f4c3e91c181b510929ade67c1e34c5c5",
        "rounds": 1,
+       "type": "eq"
+    },
+    {  "id": "issue15557",
+       "file": "pdfs/issue15557.pdf",
+       "md5": "5f024a42acf27f3eadc4c7418e8f4e42",
+       "rounds": 1,
+       "type": "eq",
+       "annotations": true
+    },
+    {  "id": "issue15559",
+       "file": "pdfs/issue15559.pdf",
+       "md5": "b937f2e32925aef8c1740f357f2a6282",
+       "link": true,
+       "rounds": 1,
+       "lastPage": 1,
+       "type": "eq"
+    },
+    {  "id": "issue15577",
+       "file": "pdfs/issue15577.pdf",
+       "md5": "6939244cf44b7b31ff960b58ed7e4004",
+       "link": true,
+       "rounds": 1,
+       "lastPage": 1,
        "type": "eq"
     },
     {  "id": "hmm-pdf",
@@ -1726,6 +1761,13 @@
        "link": false,
        "type": "eq"
     },
+    {  "id": "issue9105_other",
+       "file": "pdfs/issue9105_other.pdf",
+       "md5": "4c8b9c2cceb9c5d621e1d50b3dc38efc",
+       "rounds": 1,
+       "link": false,
+       "type": "eq"
+    },
     {  "id": "issue269_1",
        "file": "pdfs/issue269_1.pdf",
        "md5": "ab932f697b4d2e2bf700de15a8efea9c",
@@ -1826,6 +1868,12 @@
        "md5": "c9101578fcb806269145132724d24ac1",
        "rounds": 1,
        "link": false,
+       "type": "eq"
+    },
+    {  "id": "issue15443",
+       "file": "pdfs/issue15443.pdf",
+       "md5": "95a9e28b3f2754aa310f3379e01d781d",
+       "rounds": 1,
        "type": "eq"
     },
     {  "id": "issue5946",
@@ -2214,6 +2262,12 @@
        "link": false,
        "rounds": 1,
        "type": "eq"
+    },
+    {  "id": "issue15629",
+       "file": "pdfs/issue15629.pdf",
+       "md5": "689771b7f5c86c783c56aa8dedab0057",
+       "rounds": 1,
+       "type": "text"
     },
     {  "id": "glyph_accent",
        "file": "pdfs/glyph_accent.pdf",
@@ -2700,6 +2754,13 @@
        "lastPage": 33,
        "type": "eq"
     },
+    {  "id": "issue15262",
+       "file": "pdfs/issue15262.pdf",
+       "md5": "f33f73848cea3c7034457653d5cfb9be",
+       "rounds": 1,
+       "type": "eq",
+       "forms": true
+    },
     {  "id": "smaskdim",
       "file": "pdfs/smaskdim.pdf",
       "md5": "de80aeca7cbf79940189fd34d59671ee",
@@ -2866,6 +2927,14 @@
        "md5": "1a0604b1a7a3aaf2162b425a9a84230b",
        "rounds": 1,
        "link": false,
+       "type": "text"
+    },
+    {  "id": "issue15352",
+       "file": "pdfs/issue15352.pdf",
+       "md5": "d0edf452a85821acf41cbfa0a6f2f2ac",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
        "type": "text"
     },
     {  "id": "issue6962",
@@ -4980,6 +5049,14 @@
        "lastPage": 1,
        "type": "eq"
     },
+    {  "id": "issue15139",
+       "file": "pdfs/issue15139.pdf",
+       "md5": "0f2beb6a788d1e47bb9af737f6670493",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "eq"
+    },
     {  "id": "gesamt",
       "file": "pdfs/gesamt.pdf",
       "md5": "743aaa6f46ed0a42864f079d632d942e",
@@ -5133,6 +5210,14 @@
     {  "id": "issue10989",
        "file": "pdfs/issue10989.pdf",
        "md5": "c16de154d9ae6dbeec0a113911957efe",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "eq"
+    },
+    {  "id": "issue15492",
+       "file": "pdfs/issue15492.pdf",
+       "md5": "968d36ef340852a4c0e6fa22ced96798",
        "rounds": 1,
        "link": true,
        "lastPage": 1,
@@ -6661,6 +6746,7 @@
           "annotationType": 15,
           "color": [255, 0, 0],
           "thickness": 3,
+          "opacity": 1,
           "paths": [{
               "bezier": [
                 1.5, 25.727771084724367, 2.8040804485100495, 27.031851533234402,
@@ -6744,6 +6830,7 @@
          "annotationType": 15,
          "color": [0, 0, 0],
          "thickness": 1,
+         "opacity": 1,
          "paths": [
            {
              "bezier": [
@@ -6767,6 +6854,7 @@
          "annotationType": 15,
          "color": [0, 0, 0],
          "thickness": 1,
+         "opacity": 1,
          "paths": [
            {
              "bezier": [
@@ -6792,6 +6880,7 @@
          "annotationType": 15,
          "color": [0, 0, 0],
          "thickness": 1,
+         "opacity": 1,
          "paths": [
            {
              "bezier": [
@@ -6815,6 +6904,7 @@
          "annotationType": 15,
          "color": [0, 0, 0],
          "thickness": 1,
+         "opacity": 1,
          "paths": [
            {
              "bezier": [
@@ -6847,5 +6937,41 @@
    "lastPage": 2,
    "type": "eq",
    "annotations": true
+   },
+   { "id": "bug1782186",
+   "file": "pdfs/bug1782186.pdf",
+   "password": "Hello",
+   "md5": "8505033d63625dfd77e90a3722b0c316",
+   "rounds": 1,
+   "type": "eq"
+   },
+   {  "id": "issue15289",
+      "file": "pdfs/issue15289.pdf",
+      "md5": "f3d20aee398e052ac3dce7cc030f50de",
+      "link": true,
+      "rounds": 1,
+      "firstPage": 1,
+      "lastPage": 1,
+      "type": "eq"
+   },
+   {  "id": "bug1791583",
+      "file": "pdfs/bug1791583.pdf",
+      "md5": "1ff6badc865c9a5e9a0dc0b7131ffe28",
+      "link": true,
+      "rounds": 1,
+      "type": "eq"
+   },
+   {  "id": "bug1795263",
+      "file": "pdfs/bug1795263.pdf",
+      "md5": "af708acbb22c6c9d268240dcf4a39809",
+      "rounds": 1,
+      "type": "eq"
+   },
+   {  "id": "bug1796741-print",
+      "file": "pdfs/bug1796741.pdf",
+      "md5": "d5167d1b0d1b840c9aa258b98ce4fa62",
+      "rounds": 1,
+      "type": "eq",
+      "print": true
    }
 ]

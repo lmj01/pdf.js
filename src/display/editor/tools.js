@@ -22,6 +22,7 @@ import {
   AnnotationEditorType,
   shadow,
   Util,
+  warn,
 } from "../../shared/util.js";
 import { getColorValues, getRGB } from "../display_utils.js";
 
@@ -30,6 +31,18 @@ function bindEvents(obj, element, names) {
     element.addEventListener(name, obj[name].bind(obj));
   }
 }
+
+/**
+ * Convert a number between 0 and 100 into an hex number between 0 and 255.
+ * @param {number} opacity
+ * @return {string}
+ */
+function opacityToHex(opacity) {
+  return Math.round(Math.min(255, Math.max(1, 255 * opacity)))
+    .toString(16)
+    .padStart(2, "0");
+}
+
 /**
  * Class to create some unique ids for the different editors.
  */
@@ -54,21 +67,29 @@ class IdManager {
 class CommandManager {
   #commands = [];
 
-  #maxSize = 100;
+  #locked = false;
 
-  // When the position is NaN, it means the buffer is empty.
-  #position = NaN;
+  #maxSize;
 
-  #start = 0;
+  #position = -1;
+
+  constructor(maxSize = 128) {
+    this.#maxSize = maxSize;
+  }
+
+  /**
+   * @typedef {Object} addOptions
+   * @property {function} cmd
+   * @property {function} undo
+   * @property {boolean} mustExec
+   * @property {number} type
+   * @property {boolean} overwriteIfSameType
+   * @property {boolean} keepUndo
+   */
 
   /**
    * Add a new couple of commands to be used in case of redo/undo.
-   * @param {function} cmd
-   * @param {function} undo
-   * @param {boolean} mustExec
-   * @param {number} type
-   * @param {boolean} overwriteIfSameType
-   * @param {boolean} keepUndo
+   * @param {addOptions} options
    */
   add({
     cmd,
@@ -78,12 +99,27 @@ class CommandManager {
     overwriteIfSameType = false,
     keepUndo = false,
   }) {
+    if (mustExec) {
+      cmd();
+    }
+
+    if (this.#locked) {
+      return;
+    }
+
     const save = { cmd, undo, type };
-    if (
-      overwriteIfSameType &&
-      !isNaN(this.#position) &&
-      this.#commands[this.#position].type === type
-    ) {
+    if (this.#position === -1) {
+      if (this.#commands.length > 0) {
+        // All the commands have been undone and then a new one is added
+        // hence we clear the queue.
+        this.#commands.length = 0;
+      }
+      this.#position = 0;
+      this.#commands.push(save);
+      return;
+    }
+
+    if (overwriteIfSameType && this.#commands[this.#position].type === type) {
       // For example when we change a color we don't want to
       // be able to undo all the steps, hence we only want to
       // keep the last undoable action in this sequence of actions.
@@ -91,62 +127,50 @@ class CommandManager {
         save.undo = this.#commands[this.#position].undo;
       }
       this.#commands[this.#position] = save;
-      if (mustExec) {
-        cmd();
-      }
       return;
     }
-    const next = (this.#position + 1) % this.#maxSize;
-    if (next !== this.#start) {
-      if (this.#start < next) {
-        this.#commands = this.#commands.slice(this.#start, next);
-      } else {
-        this.#commands = this.#commands
-          .slice(this.#start)
-          .concat(this.#commands.slice(0, next));
-      }
-      this.#start = 0;
-      this.#position = this.#commands.length - 1;
-    }
-    this.#setCommands(save);
 
-    if (mustExec) {
-      cmd();
+    const next = this.#position + 1;
+    if (next === this.#maxSize) {
+      this.#commands.splice(0, 1);
+    } else {
+      this.#position = next;
+      if (next < this.#commands.length) {
+        this.#commands.splice(next);
+      }
     }
+
+    this.#commands.push(save);
   }
 
   /**
    * Undo the last command.
    */
   undo() {
-    if (isNaN(this.#position)) {
+    if (this.#position === -1) {
       // Nothing to undo.
       return;
     }
+
+    // Avoid to insert something during the undo execution.
+    this.#locked = true;
     this.#commands[this.#position].undo();
-    if (this.#position === this.#start) {
-      this.#position = NaN;
-    } else {
-      this.#position = (this.#maxSize + this.#position - 1) % this.#maxSize;
-    }
+    this.#locked = false;
+
+    this.#position -= 1;
   }
 
   /**
    * Redo the last command.
    */
   redo() {
-    if (isNaN(this.#position)) {
-      if (this.#start < this.#commands.length) {
-        this.#commands[this.#start].cmd();
-        this.#position = this.#start;
-      }
-      return;
-    }
+    if (this.#position < this.#commands.length - 1) {
+      this.#position += 1;
 
-    const next = (this.#position + 1) % this.#maxSize;
-    if (next !== this.#start && next < this.#commands.length) {
-      this.#commands[next].cmd();
-      this.#position = next;
+      // Avoid to insert something during the redo execution.
+      this.#locked = true;
+      this.#commands[this.#position].cmd();
+      this.#locked = false;
     }
   }
 
@@ -155,7 +179,7 @@ class CommandManager {
    * @returns {boolean}
    */
   hasSomethingToUndo() {
-    return !isNaN(this.#position);
+    return this.#position !== -1;
   }
 
   /**
@@ -163,29 +187,7 @@ class CommandManager {
    * @returns {boolean}
    */
   hasSomethingToRedo() {
-    if (isNaN(this.#position) && this.#start < this.#commands.length) {
-      return true;
-    }
-    const next = (this.#position + 1) % this.#maxSize;
-    return next !== this.#start && next < this.#commands.length;
-  }
-
-  #setCommands(cmds) {
-    if (this.#commands.length < this.#maxSize) {
-      this.#commands.push(cmds);
-      this.#position = isNaN(this.#position) ? 0 : this.#position + 1;
-      return;
-    }
-
-    if (isNaN(this.#position)) {
-      this.#position = this.#start;
-    } else {
-      this.#position = (this.#position + 1) % this.#maxSize;
-      if (this.#position === this.#start) {
-        this.#start = (this.#start + 1) % this.#maxSize;
-      }
-    }
-    this.#commands[this.#position] = cmds;
+    return this.#position < this.#commands.length - 1;
   }
 
   destroy() {
@@ -261,12 +263,12 @@ class KeyboardManager {
 
   /**
    * Execute a callback, if any, for a given keyboard event.
-   * The page is used as `this` in the callback.
-   * @param {AnnotationEditorLayer} page.
+   * The self is used as `this` in the callback.
+   * @param {Object} self.
    * @param {KeyboardEvent} event
    * @returns
    */
-  exec(page, event) {
+  exec(self, event) {
     if (!this.allKeys.has(event.key)) {
       return;
     }
@@ -274,46 +276,9 @@ class KeyboardManager {
     if (!callback) {
       return;
     }
-    callback.bind(page)();
+    callback.bind(self)();
+    event.stopPropagation();
     event.preventDefault();
-  }
-}
-
-/**
- * Basic clipboard to copy/paste some editors.
- * It has to be used as a singleton.
- */
-class ClipboardManager {
-  constructor() {
-    this.element = null;
-  }
-
-  /**
-   * Copy an element.
-   * @param {AnnotationEditor} element
-   */
-  copy(element) {
-    this.element = element.copy();
-  }
-
-  /**
-   * Create a new element.
-   * @returns {AnnotationEditor|null}
-   */
-  paste() {
-    return this.element?.copy() || null;
-  }
-
-  /**
-   * Check if the clipboard is empty.
-   * @returns {boolean}
-   */
-  isEmpty() {
-    return this.element === null;
-  }
-
-  destroy() {
-    this.element = null;
   }
 }
 
@@ -393,11 +358,9 @@ class AnnotationEditorUIManager {
 
   #allLayers = new Map();
 
-  #allowClick = true;
-
-  #clipboardManager = new ClipboardManager();
-
   #commandManager = new CommandManager();
+
+  #currentPageIndex = 0;
 
   #editorTypes = null;
 
@@ -405,40 +368,209 @@ class AnnotationEditorUIManager {
 
   #idManager = new IdManager();
 
-  #isAllSelected = false;
-
   #isEnabled = false;
 
   #mode = AnnotationEditorType.NONE;
 
-  #previousActiveEditor = null;
+  #selectedEditors = new Set();
+
+  #boundCopy = this.copy.bind(this);
+
+  #boundCut = this.cut.bind(this);
+
+  #boundPaste = this.paste.bind(this);
+
+  #boundKeydown = this.keydown.bind(this);
 
   #boundOnEditingAction = this.onEditingAction.bind(this);
+
+  #boundOnPageChanging = this.onPageChanging.bind(this);
 
   #previousStates = {
     isEditing: false,
     isEmpty: true,
-    hasEmptyClipboard: true,
     hasSomethingToUndo: false,
     hasSomethingToRedo: false,
     hasSelectedEditor: false,
   };
 
-  constructor(eventBus) {
+  #container = null;
+
+  static _keyboardManager = new KeyboardManager([
+    [["ctrl+a", "mac+meta+a"], AnnotationEditorUIManager.prototype.selectAll],
+    [["ctrl+z", "mac+meta+z"], AnnotationEditorUIManager.prototype.undo],
+    [
+      ["ctrl+y", "ctrl+shift+Z", "mac+meta+shift+Z"],
+      AnnotationEditorUIManager.prototype.redo,
+    ],
+    [
+      [
+        "Backspace",
+        "alt+Backspace",
+        "ctrl+Backspace",
+        "shift+Backspace",
+        "mac+Backspace",
+        "mac+alt+Backspace",
+        "mac+ctrl+Backspace",
+        "Delete",
+        "ctrl+Delete",
+        "shift+Delete",
+      ],
+      AnnotationEditorUIManager.prototype.delete,
+    ],
+    [["Escape", "mac+Escape"], AnnotationEditorUIManager.prototype.unselectAll],
+  ]);
+
+  constructor(container, eventBus) {
+    this.#container = container;
     this.#eventBus = eventBus;
     this.#eventBus._on("editingaction", this.#boundOnEditingAction);
+    this.#eventBus._on("pagechanging", this.#boundOnPageChanging);
   }
 
   destroy() {
+    this.#removeKeyboardManager();
     this.#eventBus._off("editingaction", this.#boundOnEditingAction);
+    this.#eventBus._off("pagechanging", this.#boundOnPageChanging);
     for (const layer of this.#allLayers.values()) {
       layer.destroy();
     }
     this.#allLayers.clear();
     this.#allEditors.clear();
     this.#activeEditor = null;
-    this.#clipboardManager.destroy();
+    this.#selectedEditors.clear();
     this.#commandManager.destroy();
+  }
+
+  onPageChanging({ pageNumber }) {
+    this.#currentPageIndex = pageNumber - 1;
+  }
+
+  focusMainContainer() {
+    this.#container.focus();
+  }
+
+  #addKeyboardManager() {
+    // The keyboard events are caught at the container level in order to be able
+    // to execute some callbacks even if the current page doesn't have focus.
+    this.#container.addEventListener("keydown", this.#boundKeydown);
+  }
+
+  #removeKeyboardManager() {
+    this.#container.removeEventListener("keydown", this.#boundKeydown);
+  }
+
+  #addCopyPasteListeners() {
+    document.addEventListener("copy", this.#boundCopy);
+    document.addEventListener("cut", this.#boundCut);
+    document.addEventListener("paste", this.#boundPaste);
+  }
+
+  #removeCopyPasteListeners() {
+    document.removeEventListener("copy", this.#boundCopy);
+    document.removeEventListener("cut", this.#boundCut);
+    document.removeEventListener("paste", this.#boundPaste);
+  }
+
+  /**
+   * Copy callback.
+   * @param {ClipboardEvent} event
+   */
+  copy(event) {
+    event.preventDefault();
+
+    if (this.#activeEditor) {
+      // An editor is being edited so just commit it.
+      this.#activeEditor.commitOrRemove();
+    }
+
+    if (!this.hasSelection) {
+      return;
+    }
+
+    const editors = [];
+    for (const editor of this.#selectedEditors) {
+      if (!editor.isEmpty()) {
+        editors.push(editor.serialize());
+      }
+    }
+    if (editors.length === 0) {
+      return;
+    }
+
+    event.clipboardData.setData("application/pdfjs", JSON.stringify(editors));
+  }
+
+  /**
+   * Cut callback.
+   * @param {ClipboardEvent} event
+   */
+  cut(event) {
+    this.copy(event);
+    this.delete();
+  }
+
+  /**
+   * Paste callback.
+   * @param {ClipboardEvent} event
+   */
+  paste(event) {
+    event.preventDefault();
+
+    let data = event.clipboardData.getData("application/pdfjs");
+    if (!data) {
+      return;
+    }
+
+    try {
+      data = JSON.parse(data);
+    } catch (ex) {
+      warn(`paste: "${ex.message}".`);
+      return;
+    }
+
+    if (!Array.isArray(data)) {
+      return;
+    }
+
+    this.unselectAll();
+    const layer = this.#allLayers.get(this.#currentPageIndex);
+
+    try {
+      const newEditors = [];
+      for (const editor of data) {
+        const deserializedEditor = layer.deserialize(editor);
+        if (!deserializedEditor) {
+          return;
+        }
+        newEditors.push(deserializedEditor);
+      }
+
+      const cmd = () => {
+        for (const editor of newEditors) {
+          this.#addEditorToLayer(editor);
+        }
+        this.#selectEditors(newEditors);
+      };
+      const undo = () => {
+        for (const editor of newEditors) {
+          editor.remove();
+        }
+      };
+      this.addCommands({ cmd, undo, mustExec: true });
+    } catch (ex) {
+      warn(`paste: "${ex.message}".`);
+    }
+  }
+
+  /**
+   * Keydown callback.
+   * @param {KeyboardEvent} event
+   */
+  keydown(event) {
+    if (!this.getActive()?.shouldGetKeyboardEvents()) {
+      AnnotationEditorUIManager._keyboardManager.exec(this, event);
+    }
   }
 
   /**
@@ -448,18 +580,14 @@ class AnnotationEditorUIManager {
    * @param {Object} details
    */
   onEditingAction(details) {
-    if (
-      ["undo", "redo", "cut", "copy", "paste", "delete", "selectAll"].includes(
-        details.name
-      )
-    ) {
+    if (["undo", "redo", "delete", "selectAll"].includes(details.name)) {
       this[details.name]();
     }
   }
 
   /**
-   * Update the different possible states of this manager, e.g. is the clipboard
-   * empty or is there something to undo, ...
+   * Update the different possible states of this manager, e.g. is there
+   * something to undo, redo, ...
    * @param {Object} details
    */
   #dispatchUpdateStates(details) {
@@ -490,15 +618,18 @@ class AnnotationEditorUIManager {
    */
   setEditingState(isEditing) {
     if (isEditing) {
+      this.#addKeyboardManager();
+      this.#addCopyPasteListeners();
       this.#dispatchUpdateStates({
         isEditing: this.#mode !== AnnotationEditorType.NONE,
         isEmpty: this.#isEmpty(),
         hasSomethingToUndo: this.#commandManager.hasSomethingToUndo(),
         hasSomethingToRedo: this.#commandManager.hasSomethingToRedo(),
         hasSelectedEditor: false,
-        hasEmptyClipboard: this.#clipboardManager.isEmpty(),
       });
     } else {
+      this.#removeKeyboardManager();
+      this.#removeCopyPasteListeners();
       this.#dispatchUpdateStates({
         isEditing: false,
       });
@@ -506,6 +637,9 @@ class AnnotationEditorUIManager {
   }
 
   registerEditorTypes(types) {
+    if (this.#editorTypes) {
+      return;
+    }
     this.#editorTypes = types;
     for (const editorType of this.#editorTypes) {
       this.#dispatchUpdateUI(editorType.defaultPropertiesToUpdate);
@@ -580,10 +714,14 @@ class AnnotationEditorUIManager {
    * @param {*} value
    */
   updateParams(type, value) {
-    (this.#activeEditor || this.#previousActiveEditor)?.updateParams(
-      type,
-      value
-    );
+    if (!this.#editorTypes) {
+      return;
+    }
+
+    for (const editor of this.#selectedEditors) {
+      editor.updateParams(type, value);
+    }
+
     for (const editorType of this.#editorTypes) {
       editorType.updateDefaultParams(type, value);
     }
@@ -605,6 +743,7 @@ class AnnotationEditorUIManager {
    * Disable all the layers.
    */
   #disableAll() {
+    this.unselectAll();
     if (this.#isEnabled) {
       this.#isEnabled = false;
       for (const layer of this.#allLayers.values()) {
@@ -651,6 +790,7 @@ class AnnotationEditorUIManager {
    */
   removeEditor(editor) {
     this.#allEditors.delete(editor.id);
+    this.unselect(editor);
   }
 
   /**
@@ -675,22 +815,75 @@ class AnnotationEditorUIManager {
       return;
     }
 
-    this.#previousActiveEditor = this.#activeEditor;
-
     this.#activeEditor = editor;
     if (editor) {
       this.#dispatchUpdateUI(editor.propertiesToUpdate);
-      this.#dispatchUpdateStates({ hasSelectedEditor: true });
-    } else {
-      this.#dispatchUpdateStates({ hasSelectedEditor: false });
-      if (this.#previousActiveEditor) {
-        this.#dispatchUpdateUI(this.#previousActiveEditor.propertiesToUpdate);
-      } else {
-        for (const editorType of this.#editorTypes) {
-          this.#dispatchUpdateUI(editorType.defaultPropertiesToUpdate);
-        }
+    }
+  }
+
+  /**
+   * Add or remove an editor the current selection.
+   * @param {AnnotationEditor} editor
+   */
+  toggleSelected(editor) {
+    if (this.#selectedEditors.has(editor)) {
+      this.#selectedEditors.delete(editor);
+      editor.unselect();
+      this.#dispatchUpdateStates({
+        hasSelectedEditor: this.hasSelection,
+      });
+      return;
+    }
+    this.#selectedEditors.add(editor);
+    editor.select();
+    this.#dispatchUpdateUI(editor.propertiesToUpdate);
+    this.#dispatchUpdateStates({
+      hasSelectedEditor: true,
+    });
+  }
+
+  /**
+   * Set the last selected editor.
+   * @param {AnnotationEditor} editor
+   */
+  setSelected(editor) {
+    for (const ed of this.#selectedEditors) {
+      if (ed !== editor) {
+        ed.unselect();
       }
     }
+    this.#selectedEditors.clear();
+
+    this.#selectedEditors.add(editor);
+    editor.select();
+    this.#dispatchUpdateUI(editor.propertiesToUpdate);
+    this.#dispatchUpdateStates({
+      hasSelectedEditor: true,
+    });
+  }
+
+  /**
+   * Check if the editor is selected.
+   * @param {AnnotationEditor} editor
+   */
+  isSelected(editor) {
+    return this.#selectedEditors.has(editor);
+  }
+
+  /**
+   * Unselect an editor.
+   * @param {AnnotationEditor} editor
+   */
+  unselect(editor) {
+    editor.unselect();
+    this.#selectedEditors.delete(editor);
+    this.#dispatchUpdateStates({
+      hasSelectedEditor: this.hasSelection,
+    });
+  }
+
+  get hasSelection() {
+    return this.#selectedEditors.size !== 0;
   }
 
   /**
@@ -745,138 +938,80 @@ class AnnotationEditorUIManager {
   }
 
   /**
-   * When set to true a click on the current layer will trigger
-   * an editor creation.
-   * @return {boolean}
-   */
-  get allowClick() {
-    return this.#allowClick;
-  }
-
-  /**
-   * @param {boolean} allow
-   */
-  set allowClick(allow) {
-    this.#allowClick = allow;
-  }
-
-  /**
-   * Unselect the current editor.
-   */
-  unselect() {
-    if (this.#activeEditor) {
-      this.#activeEditor.parent.setActiveEditor(null);
-    }
-    this.#allowClick = true;
-  }
-
-  /**
    * Delete the current editor or all.
    */
   delete() {
-    let cmd, undo;
-    if (this.#isAllSelected) {
-      const editors = Array.from(this.#allEditors.values());
-      cmd = () => {
-        for (const editor of editors) {
-          if (!editor.isEmpty()) {
-            editor.remove();
-          }
-        }
-      };
-
-      undo = () => {
-        for (const editor of editors) {
-          this.#addEditorToLayer(editor);
-        }
-      };
-
-      this.addCommands({ cmd, undo, mustExec: true });
-    } else {
-      if (!this.#activeEditor) {
-        return;
-      }
-      const editor = this.#activeEditor;
-      cmd = () => {
-        editor.remove();
-      };
-      undo = () => {
-        this.#addEditorToLayer(editor);
-      };
-    }
-
-    this.addCommands({ cmd, undo, mustExec: true });
-  }
-
-  /**
-   * Copy the selected editor.
-   */
-  copy() {
-    if (this.#activeEditor) {
-      this.#clipboardManager.copy(this.#activeEditor);
-      this.#dispatchUpdateStates({ hasEmptyClipboard: false });
-    }
-  }
-
-  /**
-   * Cut the selected editor.
-   */
-  cut() {
-    if (this.#activeEditor) {
-      this.#clipboardManager.copy(this.#activeEditor);
-      const editor = this.#activeEditor;
-      const cmd = () => {
-        editor.remove();
-      };
-      const undo = () => {
-        this.#addEditorToLayer(editor);
-      };
-
-      this.addCommands({ cmd, undo, mustExec: true });
-    }
-  }
-
-  /**
-   * Paste a previously copied editor.
-   * @returns {undefined}
-   */
-  paste() {
-    const editor = this.#clipboardManager.paste();
-    if (!editor) {
+    this.commitOrRemove();
+    if (!this.hasSelection) {
       return;
     }
-    // TODO: paste in the current visible layer.
+
+    const editors = [...this.#selectedEditors];
     const cmd = () => {
-      this.#addEditorToLayer(editor);
+      for (const editor of editors) {
+        editor.remove();
+      }
     };
     const undo = () => {
-      editor.remove();
+      for (const editor of editors) {
+        this.#addEditorToLayer(editor);
+      }
     };
 
     this.addCommands({ cmd, undo, mustExec: true });
   }
 
+  commitOrRemove() {
+    // An editor is being edited so just commit it.
+    this.#activeEditor?.commitOrRemove();
+  }
+
   /**
-   * Select all the editors.
+   * Select the editors.
+   * @param {Array<AnnotationEditor>} editors
    */
-  selectAll() {
-    this.#isAllSelected = true;
-    for (const editor of this.#allEditors.values()) {
+  #selectEditors(editors) {
+    this.#selectedEditors.clear();
+    for (const editor of editors) {
+      if (editor.isEmpty()) {
+        continue;
+      }
+      this.#selectedEditors.add(editor);
       editor.select();
     }
     this.#dispatchUpdateStates({ hasSelectedEditor: true });
   }
 
   /**
-   * Unselect all the editors.
+   * Select all the editors.
+   */
+  selectAll() {
+    for (const editor of this.#selectedEditors) {
+      editor.commit();
+    }
+    this.#selectEditors(this.#allEditors.values());
+  }
+
+  /**
+   * Unselect all the selected editors.
    */
   unselectAll() {
-    this.#isAllSelected = false;
+    if (this.#activeEditor) {
+      // An editor is being edited so just commit it.
+      this.#activeEditor.commitOrRemove();
+      return;
+    }
 
-    for (const editor of this.#allEditors.values()) {
+    if (this.#selectedEditors.size === 0) {
+      return;
+    }
+    for (const editor of this.#selectedEditors) {
       editor.unselect();
     }
-    this.#dispatchUpdateStates({ hasSelectedEditor: this.hasActive() });
+    this.#selectedEditors.clear();
+    this.#dispatchUpdateStates({
+      hasSelectedEditor: false,
+    });
   }
 
   /**
@@ -897,14 +1032,6 @@ class AnnotationEditorUIManager {
   }
 
   /**
-   * Check if there is an active editor.
-   * @returns {boolean}
-   */
-  hasActive() {
-    return this.#activeEditor !== null;
-  }
-
-  /**
    * Get the current editor mode.
    * @returns {number}
    */
@@ -913,4 +1040,11 @@ class AnnotationEditorUIManager {
   }
 }
 
-export { AnnotationEditorUIManager, bindEvents, ColorManager, KeyboardManager };
+export {
+  AnnotationEditorUIManager,
+  bindEvents,
+  ColorManager,
+  CommandManager,
+  KeyboardManager,
+  opacityToHex,
+};

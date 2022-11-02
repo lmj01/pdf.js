@@ -49,7 +49,10 @@
 !issue7426.pdf
 !issue7439.pdf
 !issue7847_radial.pdf
+!issue8844.pdf
 !issue14953.pdf
+!issue15367.pdf
+!issue15372.pdf
 !issue7446.pdf
 !issue7492.pdf
 !issue7544.pdf
@@ -91,6 +94,7 @@
 !issue9084.pdf
 !issue12963.pdf
 !issue9105_reduced.pdf
+!issue9105_other.pdf
 !issue9252.pdf
 !issue9262_reduced.pdf
 !issue9291.pdf
@@ -106,6 +110,7 @@
 !issue10542_reduced.pdf
 !issue10665_reduced.pdf
 !issue11016_reduced.pdf
+!issue15516_reduced.pdf
 !issue11045.pdf
 !bug1057544.pdf
 !issue11150_reduced.pdf
@@ -297,6 +302,7 @@
 !issue5751.pdf
 !bug893730.pdf
 !bug864847.pdf
+!issue15629.pdf
 !issue1002.pdf
 !issue925.pdf
 !issue2840.pdf
@@ -345,6 +351,7 @@
 !issue9534_reduced.pdf
 !attachment.pdf
 !basicapi.pdf
+!issue15594_reduced.pdf
 !issue2884_reduced.pdf
 !mixedfonts.pdf
 !shading_extend.pdf
@@ -362,6 +369,7 @@
 !issue1045.pdf
 !issue5010.pdf
 !issue10339_reduced.pdf
+!issue15557.pdf
 !issue4934.pdf
 !issue4650.pdf
 !issue6721_reduced.pdf
@@ -468,6 +476,7 @@
 !issue11656.pdf
 !annotation-fileattachment.pdf
 !annotation-text-widget.pdf
+!issue15443.pdf
 !annotation-choice-widget.pdf
 !issue10900.pdf
 !annotation-button-widget.pdf
@@ -481,11 +490,13 @@
 !issue11442_reduced.pdf
 !issue11549_reduced.pdf
 !issue8097_reduced.pdf
+!issue15262.pdf
 !bug1743245.pdf
 !quadpoints.pdf
 !transparent.pdf
 !issue13931.pdf
 !xobject-image.pdf
+!issue15441.pdf
 !issue6605.pdf
 !ccitt_EndOfBlock_false.pdf
 !issue9972-1.pdf
@@ -532,3 +543,10 @@
 !issue15053.pdf
 !bug1675139.pdf
 !issue15092.pdf
+!bug1782186.pdf
+!tracemonkey_a11y.pdf
+!bug1782564.pdf
+!issue15340.pdf
+!bug1795263.pdf
+!issue15597.pdf
+!bug1796741.pdf

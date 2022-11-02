@@ -14,6 +14,7 @@
  */
 /* globals __non_webpack_require__ */
 
+import { deprecated, DOMSVGFactory } from "./display_utils.js";
 import {
   FONT_IDENTITY_MATRIX,
   IDENTITY_MATRIX,
@@ -24,7 +25,6 @@ import {
   Util,
   warn,
 } from "../shared/util.js";
-import { DOMSVGFactory } from "./display_utils.js";
 import { isNodeJS } from "../shared/is_node.js";
 
 /** @type {any} */
@@ -467,6 +467,9 @@ if (
 
   SVGGraphics = class {
     constructor(commonObjs, objs, forceDataSchema = false) {
+      deprecated(
+        "The SVG back-end is no longer maintained and *may* be removed in the future."
+      );
       this.svgFactory = new DOMSVGFactory();
 
       this.current = new SVGExtraState();
@@ -490,6 +493,15 @@ if (
       for (const op in OPS) {
         this._operatorIdMapping[OPS[op]] = op;
       }
+    }
+
+    getObject(data, fallback = null) {
+      if (typeof data === "string") {
+        return data.startsWith("g_")
+          ? this.commonObjs.get(data)
+          : this.objs.get(data);
+      }
+      return fallback;
     }
 
     save() {
@@ -1540,9 +1552,7 @@ if (
     }
 
     eoFill() {
-      if (this.current.element) {
-        this.current.element.setAttributeNS(null, "fill-rule", "evenodd");
-      }
+      this.current.element?.setAttributeNS(null, "fill-rule", "evenodd");
       this.fill();
     }
 
@@ -1554,9 +1564,7 @@ if (
     }
 
     eoFillStroke() {
-      if (this.current.element) {
-        this.current.element.setAttributeNS(null, "fill-rule", "evenodd");
-      }
+      this.current.element?.setAttributeNS(null, "fill-rule", "evenodd");
       this.fillStroke();
     }
 
@@ -1587,9 +1595,7 @@ if (
     }
 
     paintImageXObject(objId) {
-      const imgData = objId.startsWith("g_")
-        ? this.commonObjs.get(objId)
-        : this.objs.get(objId);
+      const imgData = this.getObject(objId);
       if (!imgData) {
         warn(`Dependent image with object ID ${objId} is not ready yet`);
         return;
@@ -1628,7 +1634,15 @@ if (
       }
     }
 
-    paintImageMaskXObject(imgData) {
+    paintImageMaskXObject(img) {
+      const imgData = this.getObject(img.data, img);
+      if (imgData.bitmap) {
+        warn(
+          "paintImageMaskXObject: ImageBitmap support is not implemented, " +
+            "ensure that the `isOffscreenCanvasSupported` API parameter is disabled."
+        );
+        return;
+      }
       const current = this.current;
       const width = imgData.width;
       const height = imgData.height;

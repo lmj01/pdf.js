@@ -80,15 +80,19 @@ class AnnotationFactory {
       // Only necessary to prevent the `pdfManager.docBaseUrl`-getter, used
       // with certain Annotations, from throwing and thus breaking parsing:
       pdfManager.ensureCatalog("baseUrl"),
+      // Only necessary in the `Catalog.parseDestDictionary`-method,
+      // when parsing "GoToE" actions:
+      pdfManager.ensureCatalog("attachments"),
       pdfManager.ensureDoc("xfaDatasets"),
       collectFields ? this._getPageIndex(xref, ref, pdfManager) : -1,
-    ]).then(([acroForm, baseUrl, xfaDatasets, pageIndex]) =>
+    ]).then(([acroForm, baseUrl, attachments, xfaDatasets, pageIndex]) =>
       pdfManager.ensure(this, "_create", [
         xref,
         ref,
         pdfManager,
         idFactory,
         acroForm,
+        attachments,
         xfaDatasets,
         collectFields,
         pageIndex,
@@ -105,6 +109,7 @@ class AnnotationFactory {
     pdfManager,
     idFactory,
     acroForm,
+    attachments = null,
     xfaDatasets,
     collectFields,
     pageIndex = -1
@@ -121,6 +126,8 @@ class AnnotationFactory {
     let subtype = dict.get("Subtype");
     subtype = subtype instanceof Name ? subtype.name : null;
 
+    const acroFormDict = acroForm instanceof Dict ? acroForm : Dict.empty;
+
     // Return the right annotation object based on the subtype and field type.
     const parameters = {
       xref,
@@ -129,9 +136,12 @@ class AnnotationFactory {
       subtype,
       id,
       pdfManager,
-      acroForm: acroForm instanceof Dict ? acroForm : Dict.empty,
+      acroForm: acroFormDict,
+      attachments,
       xfaDatasets,
       collectFields,
+      needAppearances:
+        !collectFields && acroFormDict.get("NeedAppearances") === true,
       pageIndex,
     };
 
@@ -502,6 +512,7 @@ class Annotation {
     }
 
     this._fallbackFontDict = null;
+    this._needAppearances = false;
   }
 
   /**
@@ -876,11 +887,16 @@ class Annotation {
   ) {
     const data = this.data;
     let appearance = this.appearance;
-    const isUsingOwnCanvas =
-      this.data.hasOwnCanvas && intent & RenderingIntentFlag.DISPLAY;
+    const isUsingOwnCanvas = !!(
+      this.data.hasOwnCanvas && intent & RenderingIntentFlag.DISPLAY
+    );
     if (!appearance) {
       if (!isUsingOwnCanvas) {
-        return new OperatorList();
+        return {
+          opList: new OperatorList(),
+          separateForm: false,
+          separateCanvas: false,
+        };
       }
       appearance = new StringStream("");
       appearance.dict = new Dict();
@@ -929,11 +945,62 @@ class Annotation {
       opList.addOp(OPS.endMarkedContent, []);
     }
     this.reset();
-    return opList;
+    return { opList, separateForm: false, separateCanvas: isUsingOwnCanvas };
   }
 
   async save(evaluator, task, annotationStorage) {
     return null;
+  }
+
+  get hasTextContent() {
+    return false;
+  }
+
+  async extractTextContent(evaluator, task, viewBox) {
+    if (!this.appearance) {
+      return;
+    }
+
+    const resources = await this.loadResources(
+      ["ExtGState", "Font", "Properties", "XObject"],
+      this.appearance
+    );
+
+    const text = [];
+    const buffer = [];
+    const sink = {
+      desiredSize: Math.Infinity,
+      ready: true,
+
+      enqueue(chunk, size) {
+        for (const item of chunk.items) {
+          buffer.push(item.str);
+          if (item.hasEOL) {
+            text.push(buffer.join(""));
+            buffer.length = 0;
+          }
+        }
+      },
+    };
+
+    await evaluator.getTextContent({
+      stream: this.appearance,
+      task,
+      resources,
+      includeMarkedContent: true,
+      combineTextItems: true,
+      sink,
+      viewBox,
+    });
+    this.reset();
+
+    if (buffer.length) {
+      text.push(buffer.join(""));
+    }
+
+    if (text.length > 0) {
+      this.data.textContent = text;
+    }
   }
 
   /**
@@ -1421,6 +1488,7 @@ class WidgetAnnotation extends Annotation {
     const dict = params.dict;
     const data = this.data;
     this.ref = params.ref;
+    this._needAppearances = params.needAppearances;
 
     data.annotationType = AnnotationType.WIDGET;
     if (data.fieldName === undefined) {
@@ -1472,6 +1540,12 @@ class WidgetAnnotation extends Annotation {
     data.defaultAppearanceData = parseDefaultAppearance(
       this._defaultAppearance
     );
+
+    data.hasAppearance =
+      (this._needAppearances &&
+        data.fieldValue !== undefined &&
+        data.fieldValue !== null) ||
+      data.hasAppearance;
 
     const fieldType = getInheritableProperty({ dict, key: "FT" });
     data.fieldType = fieldType instanceof Name ? fieldType.name : null;
@@ -1618,7 +1692,11 @@ class WidgetAnnotation extends Annotation {
     // Do not render form elements on the canvas when interactive forms are
     // enabled. The display layer is responsible for rendering them instead.
     if (renderForms && !(this instanceof SignatureWidgetAnnotation)) {
-      return new OperatorList();
+      return {
+        opList: new OperatorList(),
+        separateForm: true,
+        separateCanvas: false,
+      };
     }
 
     if (!this._hasText) {
@@ -1646,12 +1724,12 @@ class WidgetAnnotation extends Annotation {
       );
     }
 
-    const operatorList = new OperatorList();
+    const opList = new OperatorList();
 
     // Even if there is an appearance stream, ignore it. This is the
     // behaviour used by Adobe Reader.
     if (!this._defaultAppearance || content === null) {
-      return operatorList;
+      return { opList, separateForm: false, separateCanvas: false };
     }
 
     const matrix = [1, 0, 0, 1, 0, 0];
@@ -1671,14 +1749,15 @@ class WidgetAnnotation extends Annotation {
       );
     }
     if (optionalContent !== undefined) {
-      operatorList.addOp(OPS.beginMarkedContentProps, ["OC", optionalContent]);
+      opList.addOp(OPS.beginMarkedContentProps, ["OC", optionalContent]);
     }
 
-    operatorList.addOp(OPS.beginAnnotation, [
+    opList.addOp(OPS.beginAnnotation, [
       this.data.id,
       this.data.rect,
       transform,
       this.getRotationMatrix(annotationStorage),
+      /* isUsingOwnCanvas = */ false,
     ]);
 
     const stream = new StringStream(content);
@@ -1686,14 +1765,14 @@ class WidgetAnnotation extends Annotation {
       stream,
       task,
       resources: this._fieldResources.mergedResources,
-      operatorList,
+      operatorList: opList,
     });
-    operatorList.addOp(OPS.endAnnotation, []);
+    opList.addOp(OPS.endAnnotation, []);
 
     if (optionalContent !== undefined) {
-      operatorList.addOp(OPS.endMarkedContent, []);
+      opList.addOp(OPS.endMarkedContent, []);
     }
-    return operatorList;
+    return { opList, separateForm: false, separateCanvas: false };
   }
 
   _getMKDict(rotation) {
@@ -1704,13 +1783,13 @@ class WidgetAnnotation extends Annotation {
     if (this.borderColor) {
       mk.set(
         "BC",
-        Array.from(this.borderColor).map(c => c / 255)
+        Array.from(this.borderColor, c => c / 255)
       );
     }
     if (this.backgroundColor) {
       mk.set(
         "BG",
-        Array.from(this.backgroundColor).map(c => c / 255)
+        Array.from(this.backgroundColor, c => c / 255)
       );
     }
     return mk.size > 0 ? mk : null;
@@ -1842,18 +1921,25 @@ class WidgetAnnotation extends Annotation {
       rotation = storageEntry.rotation;
     }
 
-    if (rotation === undefined && value === undefined) {
+    if (
+      rotation === undefined &&
+      value === undefined &&
+      !this._needAppearances
+    ) {
       if (!this._hasValueFromXFA || this.appearance) {
         // The annotation hasn't been rendered so use the appearance.
         return null;
       }
     }
 
+    // Empty or it has a trailing whitespace.
+    const colors = this.getBorderAndBackgroundAppearances(annotationStorage);
+
     if (value === undefined) {
       // The annotation has its value in XFA datasets but not in the V field.
       value = this.data.fieldValue;
       if (!value) {
-        return "";
+        return `/Tx BMC q ${colors}Q EMC`;
       }
     }
 
@@ -1867,7 +1953,7 @@ class WidgetAnnotation extends Annotation {
 
     if (value === "") {
       // the field is empty: nothing to render
-      return "";
+      return `/Tx BMC q ${colors}Q EMC`;
     }
 
     if (rotation === undefined) {
@@ -1956,9 +2042,6 @@ class WidgetAnnotation extends Annotation {
         annotationStorage
       );
     }
-
-    // Empty or it has a trailing whitespace.
-    const colors = this.getBorderAndBackgroundAppearances(annotationStorage);
 
     if (alignment === 0 || alignment > 2) {
       // Left alignment: nothing to do
@@ -2194,7 +2277,7 @@ class TextWidgetAnnotation extends WidgetAnnotation {
     // Determine the maximum length of text in the field.
     let maximumLength = getInheritableProperty({ dict, key: "MaxLen" });
     if (!Number.isInteger(maximumLength) || maximumLength < 0) {
-      maximumLength = null;
+      maximumLength = 0;
     }
     this.data.maxLen = maximumLength;
 
@@ -2205,7 +2288,7 @@ class TextWidgetAnnotation extends WidgetAnnotation {
       !this.hasFieldFlag(AnnotationFieldFlag.MULTILINE) &&
       !this.hasFieldFlag(AnnotationFieldFlag.PASSWORD) &&
       !this.hasFieldFlag(AnnotationFieldFlag.FILESELECT) &&
-      this.data.maxLen !== null;
+      this.data.maxLen !== 0;
     this.data.doNotScroll = this.hasFieldFlag(AnnotationFieldFlag.DONOTSCROLL);
   }
 
@@ -2475,7 +2558,11 @@ class ButtonWidgetAnnotation extends WidgetAnnotation {
     }
 
     // No appearance
-    return new OperatorList();
+    return {
+      opList: new OperatorList(),
+      separateForm: false,
+      separateCanvas: false,
+    };
   }
 
   async save(evaluator, task, annotationStorage) {
@@ -2828,6 +2915,7 @@ class ButtonWidgetAnnotation extends WidgetAnnotation {
       destDict: params.dict,
       resultObj: this.data,
       docBaseUrl: params.pdfManager.docBaseUrl,
+      docAttachments: params.attachments,
     });
   }
 
@@ -2948,18 +3036,21 @@ class ChoiceWidgetAnnotation extends WidgetAnnotation {
       return super._getAppearance(evaluator, task, annotationStorage);
     }
 
-    if (!annotationStorage) {
-      return null;
+    let exportedValue, rotation;
+    const storageEntry = annotationStorage
+      ? annotationStorage.get(this.data.id)
+      : undefined;
+
+    if (storageEntry) {
+      rotation = storageEntry.rotation;
+      exportedValue = storageEntry.value;
     }
 
-    const storageEntry = annotationStorage.get(this.data.id);
-    if (!storageEntry) {
-      return null;
-    }
-
-    const rotation = storageEntry.rotation;
-    let exportedValue = storageEntry.value;
-    if (rotation === undefined && exportedValue === undefined) {
+    if (
+      rotation === undefined &&
+      exportedValue === undefined &&
+      !this._needAppearances
+    ) {
       // The annotation hasn't been rendered so use the appearance
       return null;
     }
@@ -3156,6 +3247,7 @@ class LinkAnnotation extends Annotation {
       destDict: params.dict,
       resultObj: this.data,
       docBaseUrl: params.pdfManager.docBaseUrl,
+      docAttachments: params.attachments,
     });
   }
 }
@@ -3234,6 +3326,10 @@ class FreeTextAnnotation extends MarkupAnnotation {
     super(parameters);
 
     this.data.annotationType = AnnotationType.FREETEXT;
+  }
+
+  get hasTextContent() {
+    return !!this.appearance;
   }
 
   static createNewDict(annotation, xref, { apRef, ap }) {
@@ -3385,7 +3481,7 @@ class LineAnnotation extends MarkupAnnotation {
     if (!this.appearance) {
       // The default stroke color is black.
       const strokeColor = this.color
-        ? Array.from(this.color).map(c => c / 255)
+        ? Array.from(this.color, c => c / 255)
         : [0, 0, 0];
       const strokeAlpha = dict.get("CA");
 
@@ -3396,7 +3492,7 @@ class LineAnnotation extends MarkupAnnotation {
       if (interiorColor) {
         interiorColor = getRgbColor(interiorColor, null);
         fillColor = interiorColor
-          ? Array.from(interiorColor).map(c => c / 255)
+          ? Array.from(interiorColor, c => c / 255)
           : null;
       }
       const fillAlpha = fillColor ? strokeAlpha : null;
@@ -3450,7 +3546,7 @@ class SquareAnnotation extends MarkupAnnotation {
     if (!this.appearance) {
       // The default stroke color is black.
       const strokeColor = this.color
-        ? Array.from(this.color).map(c => c / 255)
+        ? Array.from(this.color, c => c / 255)
         : [0, 0, 0];
       const strokeAlpha = parameters.dict.get("CA");
 
@@ -3460,7 +3556,7 @@ class SquareAnnotation extends MarkupAnnotation {
       if (interiorColor) {
         interiorColor = getRgbColor(interiorColor, null);
         fillColor = interiorColor
-          ? Array.from(interiorColor).map(c => c / 255)
+          ? Array.from(interiorColor, c => c / 255)
           : null;
       }
       const fillAlpha = fillColor ? strokeAlpha : null;
@@ -3504,7 +3600,7 @@ class CircleAnnotation extends MarkupAnnotation {
     if (!this.appearance) {
       // The default stroke color is black.
       const strokeColor = this.color
-        ? Array.from(this.color).map(c => c / 255)
+        ? Array.from(this.color, c => c / 255)
         : [0, 0, 0];
       const strokeAlpha = parameters.dict.get("CA");
 
@@ -3514,7 +3610,7 @@ class CircleAnnotation extends MarkupAnnotation {
       if (interiorColor) {
         interiorColor = getRgbColor(interiorColor, null);
         fillColor = interiorColor
-          ? Array.from(interiorColor).map(c => c / 255)
+          ? Array.from(interiorColor, c => c / 255)
           : null;
       }
       const fillAlpha = fillColor ? strokeAlpha : null;
@@ -3597,7 +3693,7 @@ class PolylineAnnotation extends MarkupAnnotation {
     if (!this.appearance) {
       // The default stroke color is black.
       const strokeColor = this.color
-        ? Array.from(this.color).map(c => c / 255)
+        ? Array.from(this.color, c => c / 255)
         : [0, 0, 0];
       const strokeAlpha = dict.get("CA");
 
@@ -3683,7 +3779,7 @@ class InkAnnotation extends MarkupAnnotation {
     if (!this.appearance) {
       // The default stroke color is black.
       const strokeColor = this.color
-        ? Array.from(this.color).map(c => c / 255)
+        ? Array.from(this.color, c => c / 255)
         : [0, 0, 0];
       const strokeAlpha = parameters.dict.get("CA");
 
@@ -3757,7 +3853,7 @@ class InkAnnotation extends MarkupAnnotation {
   }
 
   static async createNewAppearanceStream(annotation, xref, params) {
-    const { color, rect, rotation, paths, thickness } = annotation;
+    const { color, rect, rotation, paths, thickness, opacity } = annotation;
     const [x1, y1, x2, y2] = rect;
     let w = x2 - x1;
     let h = y2 - y1;
@@ -3770,6 +3866,11 @@ class InkAnnotation extends MarkupAnnotation {
       `${thickness} w 1 J 1 j`,
       `${getPdfColor(color, /* isFill */ false)}`,
     ];
+
+    if (opacity !== 1) {
+      appearanceBuffer.push("/R0 gs");
+    }
+
     const buffer = [];
     for (const { bezier } of paths) {
       buffer.length = 0;
@@ -3798,6 +3899,17 @@ class InkAnnotation extends MarkupAnnotation {
     if (rotation) {
       const matrix = WidgetAnnotation._getRotationMatrix(rotation, w, h);
       appearanceStreamDict.set("Matrix", matrix);
+    }
+
+    if (opacity !== 1) {
+      const resources = new Dict(xref);
+      const extGState = new Dict(xref);
+      const r0 = new Dict(xref);
+      r0.set("CA", opacity);
+      r0.set("Type", Name.get("ExtGState"));
+      extGState.set("R0", r0);
+      resources.set("ExtGState", extGState);
+      appearanceStreamDict.set("Resources", resources);
     }
 
     const ap = new StringStream(appearance);
@@ -3830,7 +3942,7 @@ class HighlightAnnotation extends MarkupAnnotation {
         }
         // Default color is yellow in Acrobat Reader
         const fillColor = this.color
-          ? Array.from(this.color).map(c => c / 255)
+          ? Array.from(this.color, c => c / 255)
           : [1, 1, 0];
         const fillAlpha = parameters.dict.get("CA");
 
@@ -3870,7 +3982,7 @@ class UnderlineAnnotation extends MarkupAnnotation {
       if (!this.appearance) {
         // Default color is black
         const strokeColor = this.color
-          ? Array.from(this.color).map(c => c / 255)
+          ? Array.from(this.color, c => c / 255)
           : [0, 0, 0];
         const strokeAlpha = parameters.dict.get("CA");
 
@@ -3909,7 +4021,7 @@ class SquigglyAnnotation extends MarkupAnnotation {
       if (!this.appearance) {
         // Default color is black
         const strokeColor = this.color
-          ? Array.from(this.color).map(c => c / 255)
+          ? Array.from(this.color, c => c / 255)
           : [0, 0, 0];
         const strokeAlpha = parameters.dict.get("CA");
 
@@ -3955,7 +4067,7 @@ class StrikeOutAnnotation extends MarkupAnnotation {
       if (!this.appearance) {
         // Default color is black
         const strokeColor = this.color
-          ? Array.from(this.color).map(c => c / 255)
+          ? Array.from(this.color, c => c / 255)
           : [0, 0, 0];
         const strokeAlpha = parameters.dict.get("CA");
 
@@ -4007,4 +4119,5 @@ export {
   AnnotationFactory,
   getQuadPoints,
   MarkupAnnotation,
+  PopupAnnotation,
 };
