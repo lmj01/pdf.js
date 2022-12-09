@@ -34,14 +34,14 @@
   </body>
   <script type="module">
     function openPdfUrl(urlOrBuffer) {
-      const name = location.href.split('name=').pop() || 'minified';
+      const name = location.search.split('name=').pop() || 'minified';
       for (let i = 0; i < window.frames.length; i++) {
         if (window.frames[i].name == name) {
           const pdfViewer = window.frames[i].PDFViewerApplication;
           if (pdfViewer) {
             console.log(name, pdfViewer, urlOrBuffer);
             pdfViewer.open(urlOrBuffer);
-            pdfViewer.appConfig.secondaryToolbar.cursorHandToolButton.click();
+            // pdfViewer.appConfig.secondaryToolbar.cursorHandToolButton.click();
             pdfViewer._contentDispositionFilename = 'mjddd.pdf';
             pdfViewer.appConfig.toolbar.mjdownload.addEventListener('click', ()=> {
               pdfViewer.appConfig.secondaryToolbar.downloadButton.click();
@@ -51,8 +51,8 @@
       }
     }
     window.onload = (event) => {
-      // openPdfUrl('./helloworld.pdf');
-      fetch('./helloworld.pdf').then(res=>res.arrayBuffer()).then(buffer => {
+      // openPdfUrl('/test/helloworld.pdf');
+      fetch('/test/helloworld.pdf').then(res=>res.arrayBuffer()).then(buffer => {
         openPdfUrl(buffer);
       })
     };
