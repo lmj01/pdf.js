@@ -42,6 +42,7 @@ import {
   getPdfFilenameFromUrl,
   GlobalWorkerOptions,
   InvalidPDFException,
+  isDataScheme,
   isPdfFile,
   loadScript,
   MissingPDFException,
@@ -49,7 +50,6 @@ import {
   PDFWorker,
   shadow,
   UnexpectedResponseException,
-  UNSUPPORTED_FEATURES,
   version,
 } from "pdfjs-lib";
 import { AppOptions, OptionKind } from "./app_options.js";
@@ -93,51 +93,6 @@ const ViewerCssTheme = {
   DARK: 2,
 };
 
-// Keep these in sync with mozilla-central's Histograms.json.
-const KNOWN_VERSIONS = [
-  "1.0",
-  "1.1",
-  "1.2",
-  "1.3",
-  "1.4",
-  "1.5",
-  "1.6",
-  "1.7",
-  "1.8",
-  "1.9",
-  "2.0",
-  "2.1",
-  "2.2",
-  "2.3",
-];
-// Keep these in sync with mozilla-central's Histograms.json.
-const KNOWN_GENERATORS = [
-  "acrobat distiller",
-  "acrobat pdfwriter",
-  "adobe livecycle",
-  "adobe pdf library",
-  "adobe photoshop",
-  "ghostscript",
-  "tcpdf",
-  "cairo",
-  "dvipdfm",
-  "dvips",
-  "pdftex",
-  "pdfkit",
-  "itext",
-  "prince",
-  "quarkxpress",
-  "mac os x",
-  "microsoft",
-  "openoffice",
-  "oracle",
-  "luradocument",
-  "pdf-xchange",
-  "antenna house",
-  "aspose.cells",
-  "fpdf",
-];
-
 class DefaultExternalServices {
   constructor() {
     throw new Error("Cannot initialize DefaultExternalServices.");
@@ -151,7 +106,7 @@ class DefaultExternalServices {
 
   static reportTelemetry(data) {}
 
-  static createDownloadManager(options) {
+  static createDownloadManager() {
     throw new Error("Not implemented: createDownloadManager");
   }
 
@@ -257,7 +212,6 @@ const PDFViewerApplication = {
   _contentDispositionFilename: null,
   _contentLength: null,
   _saveInProgress: false,
-  _docStats: null,
   _wheelUnusedTicks: 0,
   _PDFBug: null,
   _hasAnnotationEditors: false,
@@ -547,6 +501,7 @@ const PDFViewerApplication = {
       imageResourcesPath: AppOptions.get("imageResourcesPath"),
       enablePrintAutoRotate: AppOptions.get("enablePrintAutoRotate"),
       useOnlyCssZoom: AppOptions.get("useOnlyCssZoom"),
+      isOffscreenCanvasSupported: AppOptions.get("isOffscreenCanvasSupported"),
       maxCanvasPixels: AppOptions.get("maxCanvasPixels"),
       enablePermissions: AppOptions.get("enablePermissions"),
       pageColors,
@@ -778,6 +733,9 @@ const PDFViewerApplication = {
       this._downloadUrl =
         downloadUrl === url ? this.baseUrl : downloadUrl.split("#")[0];
     }
+    if (isDataScheme(url)) {
+      this._hideViewBookmark();
+    }
     let title = getPdfFilenameFromUrl(url, "");
     if (!title) {
       try {
@@ -813,8 +771,17 @@ const PDFViewerApplication = {
    * @private
    */
   _hideViewBookmark() {
+    const { viewBookmarkButton, presentationModeButton } =
+      this.appConfig.secondaryToolbar;
+
     // URL does not reflect proper document location - hiding some buttons.
-    this.appConfig.secondaryToolbar.viewBookmarkButton.hidden = true;
+    viewBookmarkButton.hidden = true;
+
+    // Avoid displaying multiple consecutive separators in the secondaryToolbar.
+    if (presentationModeButton.hidden) {
+      const element = document.getElementById("viewBookmarkSeparator");
+      element.hidden = true;
+    }
   },
 
   /**
@@ -866,7 +833,6 @@ const PDFViewerApplication = {
     this._contentDispositionFilename = null;
     this._contentLength = null;
     this._saveInProgress = false;
-    this._docStats = null;
     this._hasAnnotationEditors = false;
 
     promises.push(this.pdfScriptingManager.destroyPromise);
@@ -943,6 +909,13 @@ const PDFViewerApplication = {
     this.pdfLoadingTask = loadingTask;
 
     loadingTask.onPassword = (updateCallback, reason) => {
+      if (this.isViewerEmbedded) {
+        // The load event can't be triggered until the password is entered, so
+        // if the viewer is in an iframe and its visibility depends on the
+        // onload callback then the viewer never shows (bug 1801341).
+        this._unblockDocumentLoadEvent();
+      }
+
       this.pdfLinkService.externalLinkEnabled = false;
       this.passwordPrompt.setUpdateCallback(updateCallback, reason);
       this.passwordPrompt.open();
@@ -951,9 +924,6 @@ const PDFViewerApplication = {
     loadingTask.onProgress = ({ loaded, total }) => {
       this.progress(loaded / total);
     };
-
-    // Listen for unsupported features to report telemetry.
-    loadingTask.onUnsupportedFeature = this.fallback.bind(this);
 
     return loadingTask.promise.then(
       pdfDocument => {
@@ -1049,13 +1019,6 @@ const PDFViewerApplication = {
     }
   },
 
-  fallback(featureId) {
-    this.externalServices.reportTelemetry({
-      type: "unsupportedFeature",
-      featureId,
-    });
-  },
-
   /**
    * Report the error; used for errors affecting loading and/or parsing of
    * the entire PDF document.
@@ -1097,7 +1060,6 @@ const PDFViewerApplication = {
     }
 
     console.error(`${message}\n\n${moreInfoText.join("\n")}`);
-    this.fallback();
   },
 
   progress(level) {
@@ -1175,6 +1137,11 @@ const PDFViewerApplication = {
       baseDocumentUrl = this.baseUrl;
     } else if (PDFJSDev.test("CHROME")) {
       baseDocumentUrl = location.href.split("#")[0];
+    }
+    if (baseDocumentUrl && isDataScheme(baseDocumentUrl)) {
+      // Ignore "data:"-URLs for performance reasons, even though it may cause
+      // internal links to not work perfectly in all cases (see bug 1803050).
+      baseDocumentUrl = null;
     }
     this.pdfLinkService.setDocument(pdfDocument, baseDocumentUrl);
     this.pdfDocumentProperties.setDocument(pdfDocument);
@@ -1427,7 +1394,6 @@ const PDFViewerApplication = {
           return false;
         }
         console.warn("Warning: JavaScript support is not enabled");
-        this.fallback(UNSUPPORTED_FEATURES.javaScript);
         return true;
       });
 
@@ -1502,48 +1468,16 @@ const PDFViewerApplication = {
       } else {
         console.warn("Warning: XFA support is not enabled");
       }
-      this.fallback(UNSUPPORTED_FEATURES.forms);
     } else if (
       (info.IsAcroFormPresent || info.IsXFAPresent) &&
       !this.pdfViewer.renderForms
     ) {
       console.warn("Warning: Interactive form support is not enabled");
-      this.fallback(UNSUPPORTED_FEATURES.forms);
     }
 
     if (info.IsSignaturesPresent) {
       console.warn("Warning: Digital signatures validation is not supported");
-      this.fallback(UNSUPPORTED_FEATURES.signatures);
     }
-
-    // Telemetry labels must be C++ variable friendly.
-    let versionId = "other";
-    if (KNOWN_VERSIONS.includes(info.PDFFormatVersion)) {
-      versionId = `v${info.PDFFormatVersion.replace(".", "_")}`;
-    }
-    let generatorId = "other";
-    if (info.Producer) {
-      const producer = info.Producer.toLowerCase();
-      KNOWN_GENERATORS.some(function (generator) {
-        if (!producer.includes(generator)) {
-          return false;
-        }
-        generatorId = generator.replace(/[ .-]/g, "_");
-        return true;
-      });
-    }
-    let formType = null;
-    if (info.IsXFAPresent) {
-      formType = "xfa";
-    } else if (info.IsAcroFormPresent) {
-      formType = "acroform";
-    }
-    this.externalServices.reportTelemetry({
-      type: "documentInfo",
-      version: versionId,
-      generator: generatorId,
-      formType,
-    });
 
     this.eventBus.dispatch("metadataloaded", { source: this });
   },
@@ -1794,10 +1728,6 @@ const PDFViewerApplication = {
     this.setTitle();
 
     printService.layout();
-
-    this.externalServices.reportTelemetry({
-      type: "print",
-    });
 
     if (this._hasAnnotationEditors) {
       this.externalServices.reportTelemetry({
@@ -2092,21 +2022,6 @@ const PDFViewerApplication = {
   },
 
   /**
-   * @ignore
-   */
-  _reportDocumentStatsTelemetry() {
-    const { stats } = this.pdfDocument;
-    if (stats !== this._docStats) {
-      this._docStats = stats;
-
-      this.externalServices.reportTelemetry({
-        type: "documentStats",
-        stats,
-      });
-    }
-  },
-
-  /**
    * Used together with the integration-tests, to enable awaiting full
    * initialization of the scripting/sandbox.
    */
@@ -2241,7 +2156,7 @@ function webViewerInitialized() {
   }
 
   if (!PDFViewerApplication.supportsFullscreen) {
-    appConfig.secondaryToolbar.presentationModeButton.classList.add("hidden");
+    appConfig.secondaryToolbar.presentationModeButton.hidden = true;
   }
 
   if (PDFViewerApplication.supportsIntegratedFind) {
@@ -2303,9 +2218,6 @@ function webViewerPageRendered({ pageNumber, error }) {
       PDFViewerApplication._otherError(msg, error);
     });
   }
-
-  // It is a good time to report stream and font types.
-  PDFViewerApplication._reportDocumentStatsTelemetry();
 }
 
 function webViewerPageMode({ mode }) {

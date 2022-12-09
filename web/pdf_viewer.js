@@ -128,6 +128,8 @@ function isValidAnnotationEditorMode(mode) {
  *   landscape pages upon printing. The default is `false`.
  * @property {boolean} [useOnlyCssZoom] - Enables CSS only zooming. The default
  *   value is `false`.
+ * @property {boolean} [isOffscreenCanvasSupported] - Allows to use an
+ *   OffscreenCanvas if needed.
  * @property {number} [maxCanvasPixels] - The maximum supported canvas size in
  *   total pixels, i.e. width * height. Use -1 for no limit. The default value
  *   is 4096 * 4096 (16 mega-pixels).
@@ -287,6 +289,8 @@ class PDFViewer {
       this.renderer = options.renderer || RendererType.CANVAS;
     }
     this.useOnlyCssZoom = options.useOnlyCssZoom || false;
+    this.isOffscreenCanvasSupported =
+      options.isOffscreenCanvasSupported ?? true;
     this.maxCanvasPixels = options.maxCanvasPixels;
     this.l10n = options.l10n || NullL10n;
     this.#enablePermissions = options.enablePermissions || false;
@@ -726,7 +730,8 @@ class PDFViewer {
           } else if (isValidAnnotationEditorMode(mode)) {
             this.#annotationEditorUIManager = new AnnotationEditorUIManager(
               this.container,
-              this.eventBus
+              this.eventBus,
+              this.pdfDocument?.annotationStorage
             );
             if (mode !== AnnotationEditorType.NONE) {
               this.#annotationEditorUIManager.updateMode(mode);
@@ -775,6 +780,7 @@ class PDFViewer {
                 ? this.renderer
                 : null,
             useOnlyCssZoom: this.useOnlyCssZoom,
+            isOffscreenCanvasSupported: this.isOffscreenCanvasSupported,
             maxCanvasPixels: this.maxCanvasPixels,
             pageColors: this.pageColors,
             l10n: this.l10n,
@@ -1023,10 +1029,12 @@ class PDFViewer {
   #scrollIntoView(pageView, pageSpot = null) {
     const { div, id } = pageView;
 
-    if (this._scrollMode === ScrollMode.PAGE) {
-      // Ensure that `this._currentPageNumber` is correct.
+    // Ensure that `this._currentPageNumber` is correct, when `#scrollIntoView`
+    // is called directly (and not from `#resetCurrentPageView`).
+    if (this._currentPageNumber !== id) {
       this._setCurrentPageNumber(id);
-
+    }
+    if (this._scrollMode === ScrollMode.PAGE) {
       this.#ensurePageViewVisible();
       // Ensure that rendering always occurs, to avoid showing a blank page,
       // even if the current position doesn't change when the page is scrolled.
@@ -1046,6 +1054,15 @@ class PDFViewer {
       }
     }
     scrollIntoView(div, pageSpot);
+
+    // Ensure that the correct *initial* document position is set, when any
+    // OpenParameters are used, for documents with non-default Scroll/Spread
+    // modes (fixes issue 15695). This is necessary since the scroll-handler
+    // invokes the `update`-method asynchronously, and `this._location` could
+    // thus be wrong when the initial zooming occurs in the default viewer.
+    if (!this._currentScaleValue && this._location) {
+      this._location = null;
+    }
   }
 
   /**
@@ -1624,12 +1641,9 @@ class PDFViewer {
 
   /**
    * @typedef {Object} CreateTextLayerBuilderParameters
-   * @property {HTMLDivElement} textLayerDiv
-   * @property {number} pageIndex
-   * @property {PageViewport} viewport
-   * @property {EventBus} eventBus
    * @property {TextHighlighter} highlighter
    * @property {TextAccessibilityManager} [accessibilityManager]
+   * @property {boolean} [isOffscreenCanvasSupported]
    */
 
   /**
@@ -1637,20 +1651,14 @@ class PDFViewer {
    * @returns {TextLayerBuilder}
    */
   createTextLayerBuilder({
-    textLayerDiv,
-    pageIndex,
-    viewport,
-    eventBus,
     highlighter,
     accessibilityManager = null,
+    isOffscreenCanvasSupported = true,
   }) {
     return new TextLayerBuilder({
-      textLayerDiv,
-      eventBus,
-      pageIndex,
-      viewport,
       highlighter,
       accessibilityManager,
+      isOffscreenCanvasSupported,
     });
   }
 
@@ -1668,7 +1676,7 @@ class PDFViewer {
     return new TextHighlighter({
       eventBus,
       pageIndex,
-      findController: this.isInPresentationMode ? null : this.findController,
+      findController: this.findController,
     });
   }
 
@@ -1734,9 +1742,7 @@ class PDFViewer {
    * @property {HTMLDivElement} pageDiv
    * @property {PDFPageProxy} pdfPage
    * @property {IL10n} l10n
-   * @property {AnnotationStorage} [annotationStorage] - Storage for annotation
    * @property {TextAccessibilityManager} [accessibilityManager]
-   *   data in forms.
    */
 
   /**
@@ -1749,13 +1755,11 @@ class PDFViewer {
     pdfPage,
     accessibilityManager = null,
     l10n,
-    annotationStorage = this.pdfDocument?.annotationStorage,
   }) {
     return new AnnotationEditorLayerBuilder({
       uiManager,
       pageDiv,
       pdfPage,
-      annotationStorage,
       accessibilityManager,
       l10n,
     });
@@ -1787,18 +1791,10 @@ class PDFViewer {
   }
 
   /**
-   * @typedef {Object} CreateStructTreeLayerBuilderParameters
-   * @property {PDFPageProxy} pdfPage
-   */
-
-  /**
-   * @param {CreateStructTreeLayerBuilderParameters}
    * @returns {StructTreeLayerBuilder}
    */
-  createStructTreeLayerBuilder({ pdfPage }) {
-    return new StructTreeLayerBuilder({
-      pdfPage,
-    });
+  createStructTreeLayerBuilder() {
+    return new StructTreeLayerBuilder();
   }
 
   /**

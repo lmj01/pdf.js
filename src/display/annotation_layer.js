@@ -22,6 +22,7 @@ import {
   AnnotationBorderStyleType,
   AnnotationType,
   assert,
+  FeatureTest,
   LINE_FACTOR,
   shadow,
   unreachable,
@@ -563,15 +564,6 @@ class AnnotationElement {
     }
     return fields;
   }
-
-  static get platform() {
-    const platform = typeof navigator !== "undefined" ? navigator.platform : "";
-
-    return shadow(this, "platform", {
-      isWin: platform.includes("Win"),
-      isMac: platform.includes("Mac"),
-    });
-  }
 }
 
 class LinkAnnotationElement extends AnnotationElement {
@@ -904,7 +896,7 @@ class WidgetAnnotationElement extends AnnotationElement {
   }
 
   _getKeyModifier(event) {
-    const { isWin, isMac } = AnnotationElement.platform;
+    const { isWin, isMac } = FeatureTest.platform;
     return (isWin && event.ctrlKey) || (isMac && event.metaKey);
   }
 
@@ -1065,7 +1057,7 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
       const elementData = {
         userValue: textContent,
         formattedValue: null,
-        valueOnFocus: "",
+        lastCommittedValue: null,
       };
 
       if (this.data.multiLine) {
@@ -1122,10 +1114,11 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
 
       if (this.enableScripting && this.hasJSActions) {
         element.addEventListener("focus", event => {
+          const { target } = event;
           if (elementData.userValue) {
-            event.target.value = elementData.userValue;
+            target.value = elementData.userValue;
           }
-          elementData.valueOnFocus = event.target.value;
+          elementData.lastCommittedValue = target.value;
         });
 
         element.addEventListener("updatefromsandbox", jsEvent => {
@@ -1207,9 +1200,10 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
             return;
           }
           const { value } = event.target;
-          if (elementData.valueOnFocus === value) {
+          if (elementData.lastCommittedValue === value) {
             return;
           }
+          elementData.lastCommittedValue = value;
           // Save the entered value
           elementData.userValue = value;
           this.linkService.eventBus?.dispatch("dispatcheventinsandbox", {
@@ -1230,7 +1224,10 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
         element.addEventListener("blur", event => {
           const { value } = event.target;
           elementData.userValue = value;
-          if (this._mouseState.isDown && elementData.valueOnFocus !== value) {
+          if (
+            this._mouseState.isDown &&
+            elementData.lastCommittedValue !== value
+          ) {
             // Focus out using the mouse: data are committed
             this.linkService.eventBus?.dispatch("dispatcheventinsandbox", {
               source: this,
@@ -1250,6 +1247,7 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
 
         if (this.data.actions?.Keystroke) {
           element.addEventListener("beforeinput", event => {
+            elementData.lastCommittedValue = null;
             const { data, target } = event;
             const { value, selectionStart, selectionEnd } = target;
 
@@ -2496,7 +2494,7 @@ class FileAttachmentAnnotationElement extends AnnotationElement {
     super(parameters, { isRenderable: true });
 
     const { filename, content } = this.data.file;
-    this.filename = getFilenameFromUrl(filename);
+    this.filename = getFilenameFromUrl(filename, /* onlyStripPath = */ true);
     this.content = content;
 
     this.linkService.eventBus?.dispatch("fileattachmentannotation", {
@@ -2509,7 +2507,20 @@ class FileAttachmentAnnotationElement extends AnnotationElement {
   render() {
     this.container.className = "fileAttachmentAnnotation";
 
-    const trigger = document.createElement("div");
+    let trigger;
+    if (this.data.hasAppearance) {
+      trigger = document.createElement("div");
+    } else {
+      // Unfortunately it seems that it's not clearly specified exactly what
+      // names are actually valid, since Table 184 contains:
+      //   Conforming readers shall provide predefined icon appearances for at
+      //   least the following standard names: GraphPushPin, PaperclipTag.
+      //   Additional names may be supported as well. Default value: PushPin.
+      trigger = document.createElement("img");
+      trigger.src = `${this.imageResourcesPath}annotation-${
+        /paperclip/i.test(this.data.name) ? "paperclip" : "pushpin"
+      }.svg`;
+    }
     trigger.className = "popupTriggerArea";
     trigger.addEventListener("dblclick", this._download.bind(this));
 

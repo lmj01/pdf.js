@@ -559,6 +559,8 @@ async function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
 class PDFDocumentLoadingTask {
   static #docId = 0;
 
+  #onUnsupportedFeature = null;
+
   constructor() {
     this._capability = createPromiseCapability();
     this._transport = null;
@@ -591,13 +593,26 @@ class PDFDocumentLoadingTask {
      * @type {function}
      */
     this.onProgress = null;
+  }
 
-    /**
-     * Callback for when an unsupported feature is used in the PDF document.
-     * The callback receives an {@link UNSUPPORTED_FEATURES} argument.
-     * @type {function}
-     */
-    this.onUnsupportedFeature = null;
+  /**
+   * @type {function | null} The current callback used with unsupported
+   * features.
+   */
+  get onUnsupportedFeature() {
+    return this.#onUnsupportedFeature;
+  }
+
+  /**
+   * Callback for when an unsupported feature is used in the PDF document.
+   * The callback receives an {@link UNSUPPORTED_FEATURES} argument.
+   * @type {function}
+   */
+  set onUnsupportedFeature(callback) {
+    deprecated(
+      "The PDFDocumentLoadingTask onUnsupportedFeature property will be removed in the future."
+    );
+    this.#onUnsupportedFeature = callback;
   }
 
   /**
@@ -758,6 +773,9 @@ class PDFDocumentProxy {
    *   structures, or `null` when no statistics exists.
    */
   get stats() {
+    deprecated(
+      "The PDFDocumentProxy stats property will be removed in the future."
+    );
     return this._transport.stats;
   }
 
@@ -1605,9 +1623,7 @@ class PDFPageProxy {
    *   or `null` when no structure tree is present for the current page.
    */
   getStructTree() {
-    return (this._structTreePromise ||= this._transport.getStructTree(
-      this._pageIndex
-    ));
+    return this._transport.getStructTree(this._pageIndex);
   }
 
   /**
@@ -1641,7 +1657,6 @@ class PDFPageProxy {
     this._bitmaps.clear();
     this._annotationPromises.clear();
     this._jsActionsPromise = null;
-    this._structTreePromise = null;
     this.pendingCleanup = false;
     return Promise.all(waitOn);
   }
@@ -1676,7 +1691,6 @@ class PDFPageProxy {
     this.objs.clear();
     this._annotationPromises.clear();
     this._jsActionsPromise = null;
-    this._structTreePromise = null;
     if (resetStats && this._stats) {
       this._stats = new StatTimer();
     }
@@ -3245,7 +3259,7 @@ class InternalRenderTask {
       this.commonObjs,
       this.objs,
       this.canvasFactory,
-      optionalContentConfig,
+      { optionalContentConfig },
       this.annotationCanvasMap,
       this.pageColors
     );

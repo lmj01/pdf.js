@@ -1562,4 +1562,93 @@ describe("Interaction", () => {
       );
     });
   });
+
+  describe("in bug1802888.pdf", () => {
+    let pages;
+
+    beforeAll(async () => {
+      pages = await loadAndWait("bug1802888.pdf", getSelector("30R"));
+    });
+
+    afterAll(async () => {
+      await closePages(pages);
+    });
+
+    it("must check field value is treated by default as a number", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          await page.waitForFunction(
+            "window.PDFViewerApplication.scriptingReady === true"
+          );
+
+          await page.type(getSelector("30R"), "123", {
+            delay: 10,
+          });
+          await page.click(getSelector("31R"));
+          await page.type(getSelector("31R"), "456", {
+            delay: 10,
+          });
+          await page.click(getSelector("26R"));
+          await page.click(getSelector("27R"));
+          await page.waitForFunction(`${getQuerySelector("26R")}.value !== ""`);
+
+          const value = await page.$eval(getSelector("26R"), el => el.value);
+          expect(value).withContext(`In ${browserName}`).toEqual("579");
+        })
+      );
+    });
+  });
+
+  describe("in issue15753.pdf", () => {
+    let pages;
+
+    beforeAll(async () => {
+      pages = await loadAndWait("issue15753.pdf", getSelector("27R"));
+    });
+
+    afterAll(async () => {
+      await closePages(pages);
+    });
+
+    it("must check field value is correctly updated when committed with ENTER key", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          await page.waitForFunction(
+            "window.PDFViewerApplication.scriptingReady === true"
+          );
+
+          await page.type(getSelector("27R"), "abc", {
+            delay: 10,
+          });
+          await page.keyboard.press("Enter");
+          await page.waitForFunction(`${getQuerySelector("28R")}.value !== ""`);
+          let value = await page.$eval(getSelector("28R"), el => el.value);
+          expect(value).withContext(`In ${browserName}`).toEqual("abc");
+
+          await page.type(getSelector("27R"), "def", {
+            delay: 10,
+          });
+
+          await page.keyboard.press("Enter");
+          await page.waitForFunction(
+            `${getQuerySelector("28R")}.value !== "abc"`
+          );
+          value = await page.$eval(getSelector("28R"), el => el.value);
+          expect(value).withContext(`In ${browserName}`).toEqual("abcdef");
+
+          await page.keyboard.down("Control");
+          await page.keyboard.press("A");
+          await page.keyboard.up("Control");
+          await page.keyboard.press("Backspace");
+
+          await page.keyboard.press("Enter");
+          await page.waitForFunction(
+            `${getQuerySelector("28R")}.value !== "abcdef"`
+          );
+          value = await page.$eval(getSelector("28R"), el => el.value);
+          expect(value).withContext(`In ${browserName}`).toEqual("");
+        })
+      );
+    });
+  });
 });

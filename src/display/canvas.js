@@ -1022,7 +1022,7 @@ class CanvasGraphics {
     commonObjs,
     objs,
     canvasFactory,
-    optionalContentConfig,
+    { optionalContentConfig, markedContentStack = null },
     annotationCanvasMap,
     pageColors
   ) {
@@ -1051,7 +1051,7 @@ class CanvasGraphics {
     this.tempSMask = null;
     this.suspendedCtx = null;
     this.contentVisible = true;
-    this.markedContentStack = [];
+    this.markedContentStack = markedContentStack || [];
     this.optionalContentConfig = optionalContentConfig;
     this.cachedCanvases = new CachedCanvases(this.canvasFactory);
     this.cachedPatterns = new Map();
@@ -1870,8 +1870,7 @@ class CanvasGraphics {
     this.ctx.closePath();
   }
 
-  stroke(consumePath) {
-    consumePath = typeof consumePath !== "undefined" ? consumePath : true;
+  stroke(consumePath = true) {
     const ctx = this.ctx;
     const strokeColor = this.current.strokeColor;
     // For stroke we want to temporarily change the global alpha to the
@@ -1904,8 +1903,7 @@ class CanvasGraphics {
     this.stroke();
   }
 
-  fill(consumePath) {
-    consumePath = typeof consumePath !== "undefined" ? consumePath : true;
+  fill(consumePath = true) {
     const ctx = this.ctx;
     const fillColor = this.current.fillColor;
     const isPatternFill = this.current.patternFill;
@@ -2275,6 +2273,21 @@ class CanvasGraphics {
 
     ctx.lineWidth = lineWidth;
 
+    if (font.isInvalidPDFjsFont) {
+      const chars = [];
+      let width = 0;
+      for (const glyph of glyphs) {
+        chars.push(glyph.unicode);
+        width += glyph.width;
+      }
+      ctx.fillText(chars.join(""), 0, 0);
+      current.x += width * widthAdvanceScale * textHScale;
+      ctx.restore();
+      this.compose();
+
+      return undefined;
+    }
+
     let x = 0,
       i;
     for (i = 0; i < glyphsLength; ++i) {
@@ -2456,7 +2469,11 @@ class CanvasGraphics {
             ctx,
             this.commonObjs,
             this.objs,
-            this.canvasFactory
+            this.canvasFactory,
+            {
+              optionalContentConfig: this.optionalContentConfig,
+              markedContentStack: this.markedContentStack,
+            }
           );
         },
       };
@@ -2887,7 +2904,14 @@ class CanvasGraphics {
     ctx.transform(scaleX, skewX, skewY, scaleY, 0, 0);
     const mask = this._createMaskCanvas(img);
 
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.setTransform(
+      1,
+      0,
+      0,
+      1,
+      mask.offsetX - currentTransform[4],
+      mask.offsetY - currentTransform[5]
+    );
     for (let i = 0, ii = positions.length; i < ii; i += 2) {
       const trans = Util.transform(currentTransform, [
         scaleX,
