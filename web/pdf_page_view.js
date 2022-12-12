@@ -38,6 +38,7 @@ import {
   createPromiseCapability,
   PixelsPerInch,
   RenderingCancelledException,
+  setLayerDimensions,
   SVGGraphics,
 } from "pdfjs-lib";
 import {
@@ -179,14 +180,14 @@ class PDFPageView {
 
     const div = document.createElement("div");
     div.className = "page";
-    div.style.width = Math.round(this.viewport.width) + "px";
-    div.style.height = Math.round(this.viewport.height) + "px";
     div.setAttribute("data-page-number", this.id);
     div.setAttribute("role", "region");
     this.l10n.get("page_landmark", { page: this.id }).then(msg => {
       div.setAttribute("aria-label", msg);
     });
     this.div = div;
+
+    this.#setDimensions();
 
     container?.append(div);
 
@@ -195,6 +196,13 @@ class PDFPageView {
         PDFJSDev.test("!PRODUCTION || GENERIC")) &&
       this._isStandalone
     ) {
+      // Ensure that the various layers always get the correct initial size,
+      // see issue 15795.
+      docStyle.setProperty(
+        "--scale-factor",
+        this.scale * PixelsPerInch.PDF_TO_CSS_UNITS
+      );
+
       const { optionalContentConfigPromise } = options;
       if (optionalContentConfigPromise) {
         // Ensure that the thumbnails always display the *initial* document
@@ -210,6 +218,16 @@ class PDFPageView {
         });
       }
     }
+  }
+
+  #setDimensions() {
+    const { div, viewport } = this;
+    setLayerDimensions(
+      div,
+      viewport,
+      /* mustFlip = */ true,
+      /* mustRotate = */ false
+    );
   }
 
   setPdfPage(pdfPage) {
@@ -393,9 +411,8 @@ class PDFPageView {
     });
     this.renderingState = RenderingStates.INITIAL;
 
+    this.#setDimensions();
     const div = this.div;
-    div.style.width = Math.round(this.viewport.width) + "px";
-    div.style.height = Math.round(this.viewport.height) + "px";
 
     const childNodes = div.childNodes,
       zoomLayerNode = (keepZoomLayer && this.zoomLayer) || null,
@@ -424,18 +441,14 @@ class PDFPageView {
       // so they are not displayed on the already resized page.
       this.annotationLayer.hide();
     }
-
     if (annotationEditorLayerNode) {
       this.annotationEditorLayer.hide();
-    } else {
-      this.annotationEditorLayer?.destroy();
     }
     if (xfaLayerNode) {
       // Hide the XFA layer until all elements are resized
       // so they are not displayed on the already resized page.
       this.xfaLayer.hide();
     }
-
     if (textLayerNode) {
       this.textLayer.hide();
     }
@@ -717,8 +730,6 @@ class PDFPageView {
     // Wrap the canvas so that if it has a CSS transform for high DPI the
     // overflow will be hidden in Firefox.
     const canvasWrapper = document.createElement("div");
-    canvasWrapper.style.width = div.style.width;
-    canvasWrapper.style.height = div.style.height;
     canvasWrapper.classList.add("canvasWrapper");
 
     if (this.textLayer) {
