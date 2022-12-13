@@ -26,15 +26,12 @@
   </head>
   <body tabindex="1">
     <div class="app-pdf">
-      <iframe name="generic" frameborder="0" width="100%" height="100%" src="../generic/web/viewer.html"></iframe>
-    </div> 
-    <div class="app-pdf">
       <iframe name="minified" frameborder="0" width="100%" height="100%" src="../minified/web/viewer.html"></iframe>
     </div> 
   </body>
   <script type="module">
     function openPdfUrl(urlOrBuffer) {
-      const name = location.href.split('name=').pop() || 'minified';
+      const name = 'minified';
       for (let i = 0; i < window.frames.length; i++) {
         if (window.frames[i].name == name) {
           const pdfViewer = window.frames[i].PDFViewerApplication;
