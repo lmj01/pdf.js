@@ -86,6 +86,7 @@ function getViewerConfiguration() {
       previous: document.getElementById("previous"),
       next: document.getElementById("next"),
       mjdownload: document.getElementById("mjdownload"),
+      mjprint: document.getElementById("mjprint"),
       zoomIn: document.getElementById("zoomIn"),
       zoomOut: document.getElementById("zoomOut"),
       viewFind: document.getElementById("viewFind"),

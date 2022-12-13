@@ -897,6 +897,7 @@ select {
 }
 
 #print::before,
+#mjprint::before,
 #secondaryPrint::before {
   mask-image: var(--toolbarButton-print-icon);
 }
